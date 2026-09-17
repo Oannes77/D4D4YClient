@@ -87,11 +87,18 @@ workflows:
             -project "$XCODE_PROJECT.xcodeproj" \
             -scheme "$XCODE_SCHEME" \
             -destination "platform=iOS Simulator,name=$SIM_NAME,OS=$SIM_OS" \
-            -derivedDataPath build/screenshots_derived
+            -derivedDataPath build/screenshots_derived \
+            -resultBundlePath "$CM_BUILD_DIR/test.xcresult"
       - name: Collect screenshots
         script: |
+          # 从 .xcresult 结果包导出 XCTAttachment 截图（Xcode 自带工具，零额外依赖）。
+          # UI 测试在模拟器沙盒内运行，沙盒 $TMPDIR 与 CI runner 不同，
+          # 故不依赖临时目录，直接取结果包内的附件。
           mkdir -p "$CM_BUILD_DIR/screenshots"
-          cp -R "$TMPDIR/screenshots" "$CM_BUILD_DIR/screenshots" || true
+          xcrun xcresulttool export \
+            --path "$CM_BUILD_DIR/test.xcresult" \
+            --type file \
+            --output-path "$CM_BUILD_DIR/screenshots"
     artifacts:
       - screenshots/**/*.png
 
