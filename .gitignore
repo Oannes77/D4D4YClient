@@ -1,0 +1,22 @@
+# ===== Xcode / 构建产物（由 XcodeGen 生成，不入库） =====
+DerivedData/
+build/
+*.xcuserstate
+*.xcuserdata/
+*.xcodeproj
+*.xcworkspace
+.swiftpm/
+
+# ===== 操作系统文件 =====
+.DS_Store
+
+# ===== 生成的归档 / 包（非源码） =====
+*.zip
+
+# ===== 密钥 / 环境变量（防御性，绝不入库） =====
+.env
+*.p8
+
+# ===== 说明 =====
+# 保留入库：project.yml, codemagic.yaml, 所有 *.swift, Tests/, docs/, README.md
+# *.xcodeproj / *.xcworkspace 由 `xcodegen generate` 在 CI / 本地重新生成，故忽略。

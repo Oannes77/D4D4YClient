@@ -1,0 +1,128 @@
+import SwiftUI
+
+/// 楼层正文。
+///
+/// 展示优先级：
+/// 1. 本地屏蔽（用户在 `BlockedUser` 中屏蔽了该作者）→ 显示「该用户内容已隐藏」，不渲染任何正文/图片。
+/// 2. 论坛侧屏蔽（`Post.isBlocked`，作者被禁/删）→ 显示「该帖已被论坛隐藏」。
+/// 3. 正常：HTML 正文（`HTMLContentView`）+ 提取出的图片缩略图（点击 → `onImageTap` 全屏查看）。
+///
+/// 图片处理说明：
+/// `HTMLContentView` 基于 `NSAttributedString` 导入，不会真正加载远程图片，
+/// 故此处从 `htmlContent` 中正则提取 `<img src>` 单独以 `AsyncImage` 渲染，
+/// 既补全图片展示，又避免与正文重复（正文侧已剔除 `<img>` 标签）。
+struct PostContent: View {
+    let post: Post
+    /// 是否已被本地 `BlockedUser` 屏蔽（由父视图基于 `post.authorID` 计算后传入）。
+    let isBlocked: Bool
+    /// 点击图片缩略图时的回调，参数为解析后的绝对图片 URL。
+    let onImageTap: (URL) -> Void
+
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        if isBlocked {
+            HStack(spacing: 6) {
+                Image(systemName: "eye.slash")
+                Text("该用户内容已隐藏")
+            }
+            .font(.footnote)
+            .foregroundStyle(Color.appTextTertiary(scheme))
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 8)
+        } else if post.isBlocked {
+            HStack(spacing: 6) {
+                Image(systemName: "eye.slash")
+                Text("该帖已被论坛隐藏")
+            }
+            .font(.footnote)
+            .foregroundStyle(Color.appTextTertiary(scheme))
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 8)
+        } else {
+            VStack(alignment: .leading, spacing: 8) {
+                HTMLContentView(html: Self.stripImages(post.htmlContent))
+
+                if !images.isEmpty {
+                    imagesGrid
+                }
+            }
+        }
+    }
+
+    // MARK: - 图片缩略图
+
+    private var images: [URL] {
+        Self.extractImageURLs(from: post.htmlContent)
+    }
+
+    private var imagesGrid: some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 110), spacing: 8)], spacing: 8) {
+            ForEach(images, id: \.self) { url in
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .empty:
+                        ProgressView()
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    case .failure:
+                        Image(systemName: "photo")
+                            .foregroundStyle(Color.appTextTertiary(scheme))
+                    @unknown default:
+                        EmptyView()
+                    }
+                }
+                .frame(height: 120)
+                .frame(maxWidth: .infinity)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .clipped()
+                .onTapGesture { onImageTap(url) }
+            }
+        }
+    }
+
+    // MARK: - HTML 图片处理（视图层，不触碰 Parser）
+
+    /// 剔除 `<img ...>` 标签，避免 `NSAttributedString` 渲染出残缺 alt 文本与正文重复。
+    static func stripImages(_ html: String) -> String {
+        html.replacingOccurrences(of: #"<img[^>]*>"#,
+                                  with: "",
+                                  options: [.regularExpression, .caseInsensitive])
+    }
+
+    /// 从 HTML 中提取所有 `<img src="...">` 的地址，解析为绝对 URL。
+    static func extractImageURLs(from html: String) -> [URL] {
+        let pattern = #"<img[^>]+src=["']([^"']+)["']"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else {
+            return []
+        }
+        let ns = html as NSString
+        let matches = regex.matches(in: html, range: NSRange(location: 0, length: ns.length))
+        return matches.compactMap { match -> URL? in
+            guard match.numberOfRanges > 1, let range = Range(match.range(at: 1), in: html) else {
+                return nil
+            }
+            return Self.resolveURL(String(html[range]))
+        }
+    }
+
+    /// 将（可能为相对/协议相对）的图片地址解析为绝对 URL。
+    ///
+    /// 未来优化②：此图片地址解析逻辑应抽离为独立 `ForumURLResolver`
+    /// （统一相对 / 绝对 URL 补全、CDN 域名校准），供 ThreadList / ThreadDetail 复用。
+    static func resolveURL(_ raw: String) -> URL? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.hasPrefix("http://") || trimmed.hasPrefix("https://") {
+            return URL(string: trimmed)
+        } else if trimmed.hasPrefix("//") {
+            return URL(string: "https:" + trimmed)
+        } else if trimmed.hasPrefix("/") {
+            return URL(string: "https://www.4d4y.com" + trimmed)
+        } else if !trimmed.isEmpty {
+            return URL(string: "https://www.4d4y.com/" + trimmed)
+        }
+        return nil
+    }
+}

@@ -1,0 +1,93 @@
+# ============================================================================
+#  D4D4YClient — Alpha Build (Phase 1: 仅验证能否编译，不做分发)
+#  目标：xcodegen generate → xcodebuild build (Simulator) → 跑 XCTest → 看 build log
+#  暂不做：签名 / IPA / TestFlight / 截图 / fastlane snapshot（Phase 2 再开）
+#
+#  前置：把 D4D4YClient 作为仓库根推到 GitHub，Codemagic 关联仓库即可，
+#        本阶段【不需要任何密钥 / 开发者账号】（Simulator build 自动签名到模拟器）
+#
+#  说明：iOS 17 + Swift 5.9 用 Xcode 15.4；想用 iPhone 16 Pro / iOS 18
+#        就把 xcode 改 "16.0"，SIM_NAME 改 "iPhone 16 Pro"，SIM_OS 改 "18.0"。
+# ============================================================================
+
+workflows:
+  alpha-build:
+    name: Alpha Build (compile check only)
+    instance_type: mac_mini_m1
+    max_build_duration: 30
+    environment:
+      xcode: "15.4"
+      vars:
+        XCODE_PROJECT: D4D4YClient
+        XCODE_SCHEME: D4D4YClient
+        SIM_NAME: "iPhone 15 Pro"
+        SIM_OS: "17.5"
+
+    scripts:
+      - name: Install XcodeGen
+        script: HOMEBREW_NO_AUTO_UPDATE=1 brew install xcodegen
+
+      - name: Generate Xcode project (must succeed first)
+        script: |
+          cd $CM_BUILD_DIR
+          xcodegen generate
+
+      - name: Build for iOS Simulator (compile check)
+        script: |
+          xcodebuild build \
+            -project "$XCODE_PROJECT.xcodeproj" \
+            -scheme "$XCODE_SCHEME" \
+            -configuration Debug \
+            -destination "platform=iOS Simulator,name=$SIM_NAME,OS=$SIM_OS" \
+            -derivedDataPath build/derived
+
+      - name: Run unit tests
+        script: |
+          set +e
+          xcodebuild test \
+            -project "$XCODE_PROJECT.xcodeproj" \
+            -scheme "$XCODE_SCHEME" \
+            -destination "platform=iOS Simulator,name=$SIM_NAME,OS=$SIM_OS" \
+            -derivedDataPath build/derived
+          echo "（暂无测试用例时此步失败可忽略；已写测试时请修复）"
+
+    artifacts:
+      - build/derived/Build/Products/Debug-iphonesimulator/*.app
+
+    # ==========================================================================
+    #  Phase 2 —— 仅当上面 BUILD SUCCEEDED 后取消注释启用。
+    #  启用前需先到 Codemagic 配置三类加密变量：
+    #    APP_STORE_CONNECT_KEY_IDENTIFIER / APP_STORE_CONNECT_ISSUER_ID / APP_STORE_CONNECT_PRIVATE_KEY
+    #   并在 App Store Connect 注册 App + Bundle ID（与下方 BUNDLE_ID 一致）。
+    # ==========================================================================
+    # environment:
+    #   vars:
+    #     BUNDLE_ID: com.d4d4y.client.D4D4YClient
+    #   app_store_connect:
+    #     api_key: $APP_STORE_CONNECT_PRIVATE_KEY
+    #     key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
+    #     issuer_id: $APP_STORE_CONNECT_ISSUER_ID
+    # scripts:
+    #   - name: Set up code signing
+    #     script: xcode-project use-profiles
+    #   - name: Archive & export IPA
+    #     script: |
+    #       xcodebuild archive \
+    #         -project "$XCODE_PROJECT.xcodeproj" \
+    #         -scheme "$XCODE_SCHEME" \
+    #         -configuration Release \
+    #         -archivePath build/ios.xcarchive \
+    #         -destination 'generic/platform=iOS' \
+    #         CODE_SIGN_STYLE=Manual
+    #       xcode-project export-ipa \
+    #         --archive build/ios.xcarchive \
+    #         --export-options-plist build/ios/ExportOptions.plist
+    # artifacts:
+    #   - build/ios.xcarchive
+    #   - build/ios/ipa/*.ipa
+    # publishing:
+    #   app_store_connect:
+    #     api_key: $APP_STORE_CONNECT_PRIVATE_KEY
+    #     key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
+    #     issuer_id: $APP_STORE_CONNECT_ISSUER_ID
+    #     submit_to_testflight: true

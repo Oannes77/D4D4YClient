@@ -1,0 +1,47 @@
+import Foundation
+
+/// ViewModel 通用的加载状态。failed 区分面向用户的一句话与 Debug 详情。
+enum Loadable<T> {
+    case idle
+    case loading
+    case loaded(T)
+    case failed(message: String, debugDetail: String)
+
+    var value: T? {
+        if case .loaded(let v) = self { return v }
+        return nil
+    }
+
+    /// 把底层错误翻译为用户可读信息 + Debug 详情。
+    init(error: Error) {
+        let message: String
+        let detail: String
+        switch error {
+        case let e as NetworkError:
+            message = e.errorDescription ?? "请求失败"
+            if case .transport(let urlError) = e {
+                detail = "URLError code=\(urlError.code.rawValue) \(urlError.localizedDescription)"
+            } else if case .httpStatus(let code, let url) = e {
+                detail = "HTTP \(code) @ \(url.absoluteString)"
+            } else {
+                detail = String(describing: e)
+            }
+        case let e as ThreadListParser.ListParseError:
+            message = "主题列表解析失败"
+            detail = String(describing: e) + "（Selector 未匹配 / 列表为空）"
+        case let e as ThreadDetailParser.DetailParseError:
+            message = "帖子解析失败"
+            detail = String(describing: e) + "（楼层节点为空 / 模板改版）"
+        default:
+            message = "发生未知错误"
+            detail = String(describing: error)
+        }
+        self = .failed(message: message, debugDetail: detail)
+    }
+}
+
+extension Loadable {
+    static func failed(_ error: Error) -> Loadable<T> {
+        Loadable(error: error)
+    }
+}
