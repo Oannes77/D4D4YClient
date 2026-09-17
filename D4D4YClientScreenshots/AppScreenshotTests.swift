@@ -42,10 +42,9 @@ final class AppScreenshotTests: XCTestCase {
             button.tap()
             // 等布局稳定后再截。
             let _ = app.wait(for: .unknown, timeout: 1.5)
-            if let data = app.screenshot().pngRepresentation {
-                let url = base.appendingPathComponent("\(name).png")
-                try? data.write(to: url)
-            }
+            let data = app.screenshot().pngRepresentation
+            let url = base.appendingPathComponent("\(name).png")
+            try? data.write(to: url)
         }
 
         app.terminate()
