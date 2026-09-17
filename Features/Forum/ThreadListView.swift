@@ -98,7 +98,7 @@ struct ThreadListView: View {
         }
         .contextMenu {
             if let aid = thread.authorID {
-                if BlockedUser.isBlocked(aid, context: modelContext) {
+                if BlockedUser.isBlocked(uid: aid, context: modelContext) {
                     Button("取消屏蔽", systemImage: "person.crop.circle.badge.xmark") {
                         BlockedUser.unblock(uid: aid, context: modelContext)
                     }
