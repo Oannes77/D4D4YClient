@@ -103,10 +103,9 @@ struct ThreadListParser {
         var createdAtRaw = ""
         if paragraphs.size() > 0 {
             let first = paragraphs.get(0)
-            if let authorLink = try? first.select("a[href*=space.php?uid=]").first(),
-               let link = authorLink {
-                authorName = (try? link.text()) ?? authorName
-                authorID = extractUID(from: (try? link.attr("href")) ?? "")
+            if let authorLink = try? first.select("a[href*=space.php?uid=]").first() {
+                authorName = (try? authorLink.text()) ?? authorName
+                authorID = extractUID(from: (try? authorLink.attr("href")) ?? "")
             } else {
                 diagnostics.missingAuthorUID += 1
                 let text = (try? first.text()) ?? ""

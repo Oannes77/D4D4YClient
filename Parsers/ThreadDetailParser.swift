@@ -81,22 +81,24 @@ struct ThreadDetailParser {
 
         var authorName = "匿名"
         var authorID: Int?
-        if let authorLink = try? sub?.select("a[href*='space.php?uid=']").first(), let link = authorLink {
-            authorName = (try? link.text()) ?? authorName
-            authorID = Self.uid(from: (try? link.attr("href")) ?? "")
+        if let sub,
+           let authorLink = try? sub.select("a[href*='space.php?uid=']").first() {
+            authorName = (try? authorLink.text()) ?? authorName
+            authorID = Self.uid(from: (try? authorLink.attr("href")) ?? "")
         }
 
         var createdAtRaw = ""
-        if let em = try? sub?.select("em[id^=authorposton]").first(), let e = em {
-            createdAtRaw = (try? e.text()) ?? ""
+        if let sub,
+           let em = try? sub.select("em[id^=authorposton]").first() {
+            createdAtRaw = (try? em.text()) ?? ""
         }
 
         var realPID: Int?
         var htmlContent = ""
         var isBlocked = false
-        if let con = try? block.select("div.detailcon").first(), let c = con {
-            realPID = Self.pid(fromID: (try? c.id()) ?? "")
-            htmlContent = (try? c.html()) ?? ""
+        if let con = try? block.select("div.detailcon").first() {
+            realPID = Self.pid(fromID: (try? con.id()) ?? "")
+            htmlContent = (try? con.html()) ?? ""
         }
         if htmlContent.isEmpty {
             isBlocked = true
@@ -129,9 +131,10 @@ struct ThreadDetailParser {
         // 作者
         var authorName = "匿名"
         var authorID: Int?
-        if let authorLink = try? top?.select("a[href*='space.php?uid=']").first(), let link = authorLink {
-            authorName = (try? link.text()) ?? authorName
-            authorID = Self.uid(from: (try? link.attr("href")) ?? "")
+        if let top,
+           let authorLink = try? top.select("a[href*='space.php?uid=']").first() {
+            authorName = (try? authorLink.text()) ?? authorName
+            authorID = Self.uid(from: (try? authorLink.attr("href")) ?? "")
         }
 
         // 楼层："2#"

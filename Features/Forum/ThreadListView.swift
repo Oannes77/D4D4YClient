@@ -34,47 +34,8 @@ struct ThreadListView: View {
                     Task { await viewModel.load(page: viewModel.currentPage) }
                 })
             case .loaded(let pageData):
-                let blockedUIDs = Set(blockedUsers.map(\.uid))
-                ForEach(pageData.threads.filter { thread in
-                    guard let aid = thread.authorID else { return true }
-                    return !blockedUIDs.contains(aid)
-                }) { thread in
-                    let cache = imageCaches.first(where: { $0.tid == thread.id })
-                    HStack(alignment: .top, spacing: 12) {
-                        NavigationLink(value: thread) {
-                            ThreadRow(thread: thread, scheme: scheme)
-                        }
-                        // 轻量媒体标识（独立承载，不破坏行内文字风格）：
-                        // 📷 相机：正文有图，点按直接预览第一张；📎 回形针：含附件，列表不预览。
-                        HStack(spacing: 6) {
-                            if let cache, cache.hasImage, let url = cache.previewURL {
-                                Button {
-                                    presentedImage = FullScreenImage(url: url)
-                                } label: {
-                                    Image(systemName: "camera.fill")
-                                        .foregroundStyle(Color.appPrimary(scheme))
-                                }
-                                .buttonStyle(.borderless)
-                            }
-                            if let cache, cache.hasAttachment {
-                                Image(systemName: "paperclip")
-                                    .foregroundStyle(Color.appTextTertiary(scheme))
-                            }
-                        }
-                    }
-                    .contextMenu {
-                        if let aid = thread.authorID {
-                            if BlockedUser.isBlocked(aid, context: modelContext) {
-                                Button("取消屏蔽", systemImage: "person.crop.circle.badge.xmark") {
-                                    BlockedUser.unblock(uid: aid, context: modelContext)
-                                }
-                            } else {
-                                Button("屏蔽作者", systemImage: "person.crop.circle.badge.xmark") {
-                                    BlockedUser.block(uid: aid, username: thread.authorName, context: modelContext)
-                                }
-                            }
-                        }
-                    }
+                ForEach(visibleThreads) { thread in
+                    threadRow(thread, cache: imageCaches.first(where: { $0.tid == thread.id }))
                 }
                 paginationFooter(pageInfo: pageData.pageInfo)
             }
@@ -97,6 +58,56 @@ struct ThreadListView: View {
         .refreshable {
             await viewModel.load(page: viewModel.currentPage)
             await detectForVisibleThreads()
+        }
+    }
+
+    /// 已过滤被屏蔽作者的可见主题列表（供 ForEach 使用，拆分 body 表达式以通过类型检查）。
+    private var visibleThreads: [ForumThread] {
+        guard case .loaded(let pageData) = viewModel.state else { return [] }
+        let blockedUIDs = Set(blockedUsers.map(\.uid))
+        return pageData.threads.filter { thread in
+            guard let aid = thread.authorID else { return true }
+            return !blockedUIDs.contains(aid)
+        }
+    }
+
+    /// 列表行：左侧导航 + 右侧轻量媒体标识（📷 预览首图 / 📎 含附件）+ 长按屏蔽菜单。
+    @ViewBuilder
+    private func threadRow(_ thread: ForumThread, cache: ThreadMediaCache?) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            NavigationLink(value: thread) {
+                ThreadRow(thread: thread, scheme: scheme)
+            }
+            // 轻量媒体标识（独立承载，不破坏行内文字风格）：
+            // 📷 相机：正文有图，点按直接预览第一张；📎 回形针：含附件，列表不预览。
+            HStack(spacing: 6) {
+                if let cache, cache.hasImage, let url = cache.previewURL {
+                    Button {
+                        presentedImage = FullScreenImage(url: url)
+                    } label: {
+                        Image(systemName: "camera.fill")
+                            .foregroundStyle(Color.appPrimary(scheme))
+                    }
+                    .buttonStyle(.borderless)
+                }
+                if let cache, cache.hasAttachment {
+                    Image(systemName: "paperclip")
+                        .foregroundStyle(Color.appTextTertiary(scheme))
+                }
+            }
+        }
+        .contextMenu {
+            if let aid = thread.authorID {
+                if BlockedUser.isBlocked(aid, context: modelContext) {
+                    Button("取消屏蔽", systemImage: "person.crop.circle.badge.xmark") {
+                        BlockedUser.unblock(uid: aid, context: modelContext)
+                    }
+                } else {
+                    Button("屏蔽作者", systemImage: "person.crop.circle.badge.xmark") {
+                        BlockedUser.block(uid: aid, username: thread.authorName, context: modelContext)
+                    }
+                }
+            }
         }
     }
 
