@@ -28,6 +28,7 @@ targets:
     testTarget: D4D4YClientTests
     settings:
       base:
+        GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait"
         ENABLE_TESTABILITY: YES
@@ -42,4 +43,5 @@ targets:
       - target: D4D4YClient
     settings:
       base:
+        GENERATE_INFOPLIST_FILE: YES
         SWIFT_VERSION: "5.9"
