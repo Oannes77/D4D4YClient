@@ -248,8 +248,9 @@ final class ThreadMediaCache {
     /// 写入或更新一条缓存（按 tid 唯一）。在主线程调用。
     @MainActor
     static func upsert(_ info: ThreadMediaInfo, context: ModelContext) {
+        let targetTid = info.tid
         let descriptor = FetchDescriptor<ThreadMediaCache>(
-            predicate: #Predicate { $0.tid == info.tid }
+            predicate: #Predicate { $0.tid == targetTid }
         )
         let url = info.previewImageURL?.absoluteString
         if let existing = (try? context.fetch(descriptor))?.first {

@@ -18,7 +18,7 @@ enum Log {
             .appendingPathComponent("4d4y-debug", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         var name = url.absoluteString
-            .replacingOccurrences(of: Self.baseURL.absoluteString, with: "")
+            .replacingOccurrences(of: Self.baseURL, with: "")
             .replacingOccurrences(of: "https://", with: "")
         let invalid = CharacterSet(charactersIn: "/\\?%*:\"<>|&=")
         name = name.components(separatedBy: invalid).joined(separator: "_")

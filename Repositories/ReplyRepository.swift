@@ -99,9 +99,9 @@ final class ReplyRepository {
     func submitReply(tid: String, message: String) async -> Result<Void, ReplyError> {
         // 1) 动态加载 + 解析（绝不跳过）
         let formRes = await loadReplyForm(tid: tid)
-        guard case .success(let html) = formRes else { return .failure(formRes.error!) }
+        guard case .success(let html) = formRes else { return .failure(formRes.failure!) }
         let parsedRes = parseReplyForm(html)
-        guard case .success(let form) = parsedRes else { return .failure(parsedRes.error!) }
+        guard case .success(let form) = parsedRes else { return .failure(parsedRes.failure!) }
 
         // 2) 拼装 POST 体：全部 hidden 字段 + 回复内容；submit 无 name 时不添加按钮字段
         var fields = form.hiddenFields
@@ -250,9 +250,12 @@ final class ReplyRepository {
     }
 
     private static func gbkPercent(_ s: String, allowed: CharacterSet) -> String {
-        guard let gbk = s.data(using: .gb_18030_2000) else {
+        // GB 18030（GBK 超集）。部分 SDK 的 String.Encoding 未暴露 .gb_18030_2000 静态成员，
+        // 故用 rawValue 构造：2147485234 = kCFStringEncodingGB_18030_2000。
+        let gbk = String.Encoding(rawValue: 2147485234)
+        guard let data = s.data(using: gbk) else {
             return s.addingPercentEncoding(withAllowedCharacters: allowed) ?? s
         }
-        return gbk.map { String(format: "%%%02X", $0) }.joined()
+        return data.map { String(format: "%%%02X", $0) }.joined()
     }
 }
