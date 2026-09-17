@@ -100,7 +100,10 @@ workflows:
           xcrun xcresulttool export \
             --path "$CM_BUILD_DIR/test.xcresult" \
             --type file \
-            --output-path "$CM_BUILD_DIR/screenshots"
+            --output-path "$CM_BUILD_DIR/screenshots" || true
+          echo "--- 导出文件清单 (Collect step) ---"
+          find "$CM_BUILD_DIR/screenshots" -type f | head -50
+          echo "--- png 数量: $(find "$CM_BUILD_DIR/screenshots" -name '*.png' | wc -l) ---"
     artifacts:
       - screenshots/**/*.png
 
