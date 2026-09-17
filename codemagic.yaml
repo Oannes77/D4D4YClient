@@ -54,6 +54,47 @@ workflows:
     artifacts:
       - build/derived/Build/Products/Debug-iphonesimulator/*.app
 
+  # ----------------------------------------------------------------------------
+  #  Phase 1.5 —— 真实 UI 截图（演示模式，无需密钥）
+  #  启动参数 -DemoMode 触发 ScreenshotGalleryView + 离线夹具数据；
+  #  UI 测试逐 Tab 截 5 个界面，亮/暗各一套，写入 $TMPDIR/screenshots 后收集为 artifact。
+  #  入口：在 Codemagic 选择 "Screenshots" workflow 手动触发。
+  # ----------------------------------------------------------------------------
+  screenshots:
+    name: Screenshots (demo mode)
+    instance_type: mac_mini_m2
+    max_build_duration: 30
+    environment:
+      xcode: "16.2"
+      vars:
+        XCODE_PROJECT: D4D4YClient
+        XCODE_SCHEME: D4D4YClientScreenshots
+        SIM_NAME: "iPhone 16 Pro"
+        SIM_OS: "18.2"
+    scripts:
+      - name: Install XcodeGen
+        script: HOMEBREW_NO_AUTO_UPDATE=1 brew install xcodegen
+      - name: Generate Xcode project
+        script: |
+          cd $CM_BUILD_DIR
+          xcodegen generate
+      - name: Boot simulator
+        script: xcrun simctl boot "$SIM_NAME" || true
+      - name: Build & run screenshot tests
+        script: |
+          set -e
+          xcodebuild test \
+            -project "$XCODE_PROJECT.xcodeproj" \
+            -scheme "$XCODE_SCHEME" \
+            -destination "platform=iOS Simulator,name=$SIM_NAME,OS=$SIM_OS" \
+            -derivedDataPath build/screenshots_derived
+      - name: Collect screenshots
+        script: |
+          mkdir -p "$CM_BUILD_DIR/screenshots"
+          cp -R "$TMPDIR/screenshots" "$CM_BUILD_DIR/screenshots" || true
+    artifacts:
+      - screenshots/**/*.png
+
     # ==========================================================================
     #  Phase 2 —— 仅当上面 BUILD SUCCEEDED 后取消注释启用。
     #  启用前需先到 Codemagic 配置三类加密变量：

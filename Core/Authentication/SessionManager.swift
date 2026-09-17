@@ -17,6 +17,14 @@ final class SessionManager: ObservableObject {
 
     private init() {}
 
+    // MARK: - 演示模式（仅截图用，不触及真实鉴权流程）
+
+    /// 仅演示/截图模式：把会话置为已登录，使回复编辑器呈现「输入框 + 紫色发送」。
+    /// 无网络、无 Keychain；正常构建中不会被调用。
+    func enterDemoSession() {
+        self.state = .authenticated(UserSession(uid: 1, username: "演示用户", loginTime: .now))
+    }
+
     // MARK: - 启动恢复
 
     /// App 启动（或 Scene 出现）时调用：若 Keychain 存有有效凭据，

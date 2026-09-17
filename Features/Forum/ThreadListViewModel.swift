@@ -39,6 +39,15 @@ final class ThreadListViewModel: ObservableObject {
         await load(pageURL: next)
     }
 
+    /// 演示模式：离线解析仓库内 forumdisplay 夹具，避免联网（仅 `-DemoMode` 调用）。
+    func loadDemo() async {
+        guard let pageData = DemoData.loadForumDisplayFixture() else {
+            state = .failed(message: "演示数据缺失", debugDetail: "forumdisplay 夹具未找到")
+            return
+        }
+        state = .loaded(pageData)
+    }
+
     func goToPreviousPage() async {
         guard let prev = state.value?.pageInfo.previousPageURL else { return }
         await load(pageURL: prev)

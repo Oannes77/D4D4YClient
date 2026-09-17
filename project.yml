@@ -45,3 +45,15 @@ targets:
       base:
         GENERATE_INFOPLIST_FILE: YES
         SWIFT_VERSION: "5.9"
+
+  D4D4YClientScreenshots:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: D4D4YClientScreenshots
+    dependencies:
+      - target: D4D4YClient
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_VERSION: "5.9"

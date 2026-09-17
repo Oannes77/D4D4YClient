@@ -25,4 +25,16 @@ final class ForumListViewModel: ObservableObject {
             state = .failed(error)
         }
     }
+
+    /// 演示模式：返回手编版块列表，避免联网（仅 `-DemoMode` 调用）。
+    func loadDemo() async {
+        let sections = [
+            ForumSection(id: 14, name: "技术交流", isSubForum: false),
+            ForumSection(id: 20, name: "模型下载", isSubForum: false),
+            ForumSection(id: 7, name: "心得技巧", isSubForum: false),
+            ForumSection(id: 33, name: "设备维修", isSubForum: false),
+            ForumSection(id: 5, name: "灌水区", isSubForum: false),
+        ]
+        state = .loaded(sections)
+    }
 }

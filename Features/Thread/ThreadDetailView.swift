@@ -80,7 +80,13 @@ struct ThreadDetailView: View {
         .scrollContentBackground(.hidden)
         .background(Color.appBackground(scheme))
         .navigationBarTitleDisplayMode(.inline)
-        .task { await viewModel.loadFirstPage() }
+        .task {
+            if DemoMode.isOn {
+                await viewModel.loadDemo()
+            } else {
+                await viewModel.loadFirstPage()
+            }
+        }
         .onAppear {
             ReadHistory.record(tid: viewModel.thread.id,
                                title: viewModel.thread.title,

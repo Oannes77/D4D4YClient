@@ -22,9 +22,15 @@ struct D4D4YApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootView()
-                .modelContainer(modelContainer)
-                .environmentObject(SessionManager.shared)
+            if DemoMode.isOn {
+                // 截图模式：用真实组件 + 离线样例数据呈现 5 个目标界面。
+                ScreenshotGalleryView()
+                    .modelContainer(modelContainer)
+            } else {
+                RootView()
+                    .modelContainer(modelContainer)
+                    .environmentObject(SessionManager.shared)
+            }
         }
     }
 }

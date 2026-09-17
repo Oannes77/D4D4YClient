@@ -73,7 +73,13 @@ struct ForumListView: View {
                                             context: modelContext)
                     }
             }
-            .task { await viewModel.load() }
+            .task {
+                if DemoMode.isOn {
+                    await viewModel.loadDemo()
+                } else {
+                    await viewModel.load()
+                }
+            }
             .refreshable { await viewModel.load() }
         }
     }
