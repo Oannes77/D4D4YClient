@@ -27,7 +27,8 @@ final class AppScreenshotTests: XCTestCase {
         if dark { app.launchArguments.append("-DarkMode") }
         app.launch()
 
-        let base = (ProcessInfo.processInfo.environment["TMPDIR"] ?? NSTemporaryDirectory())
+        let tmpRoot = URL(fileURLWithPath: ProcessInfo.processInfo.environment["TMPDIR"] ?? NSTemporaryDirectory(), isDirectory: true)
+        let base = tmpRoot
             .appendingPathComponent("screenshots")
             .appendingPathComponent(dark ? "dark" : "light")
         try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)

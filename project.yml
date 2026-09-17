@@ -23,6 +23,7 @@ targets:
       - Core
       - Features
       - Shared
+      - Demo
     dependencies:
       - package: SwiftSoup
     testTarget: D4D4YClientTests

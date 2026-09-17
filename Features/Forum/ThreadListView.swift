@@ -55,7 +55,7 @@ struct ThreadListView: View {
             if DemoMode.isOn {
                 await viewModel.loadDemo()
                 if case .loaded(let page) = viewModel.state {
-                    DemoData.seedMedia(for: page.threads, context: modelContext)
+                    await DemoData.seedMedia(for: page.threads, context: modelContext)
                 }
             } else {
                 await viewModel.loadFirstPage()

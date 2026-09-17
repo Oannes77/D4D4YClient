@@ -37,7 +37,7 @@ enum DemoData {
     static func loadForumDisplayFixture() -> ThreadListPage? {
         guard let url = Bundle.main.url(forResource: "forumdisplay_fid14_page1", withExtension: "html"),
               let data = try? Data(contentsOf: url) else { return nil }
-        let html = String(data: data, encoding: .gb_18030_2000)
+        let html = String(data: data, encoding: String.Encoding(rawValue: 2147485234))
             ?? String(data: data, encoding: .utf8) ?? ""
         return try? ThreadListParser.parse(html: html)
     }
@@ -46,7 +46,7 @@ enum DemoData {
     static func loadViewthreadFixture() -> ThreadPage? {
         guard let url = Bundle.main.url(forResource: "viewthread_tid193033_page1", withExtension: "html"),
               let data = try? Data(contentsOf: url) else { return nil }
-        let html = String(data: data, encoding: .gb_18030_2000)
+        let html = String(data: data, encoding: String.Encoding(rawValue: 2147485234))
             ?? String(data: data, encoding: .utf8) ?? ""
         return try? ThreadDetailParser.parse(html: html)
     }
@@ -54,6 +54,7 @@ enum DemoData {
     // MARK: - SwiftData 样例种子
 
     /// 为首页 / 板块列表 / 列表媒体标识注入离线样例数据。
+    @MainActor
     static func seed(context: ModelContext) {
         // 常用板块（首页「常用板块」）
         for f in [("技术交流", 14), ("模型下载", 20), ("心得技巧", 7)] {
@@ -71,6 +72,7 @@ enum DemoData {
     }
 
     /// 为帖子列表行注入 📷 / 📎 媒体标识（跳过网络检测，直接按 tid 标记）。
+    @MainActor
     static func seedMedia(for threads: [ForumThread], context: ModelContext) {
         guard threads.count >= 2 else { return }
         let imageInfo = ThreadMediaInfo(
