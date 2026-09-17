@@ -99,9 +99,17 @@ final class ReplyRepository {
     func submitReply(tid: String, message: String) async -> Result<Void, ReplyError> {
         // 1) 动态加载 + 解析（绝不跳过）
         let formRes = await loadReplyForm(tid: tid)
-        guard case .success(let html) = formRes else { return .failure(formRes.failure!) }
+        let html: String
+        switch formRes {
+        case .success(let h): html = h
+        case .failure(let err): return .failure(err)
+        }
         let parsedRes = parseReplyForm(html)
-        guard case .success(let form) = parsedRes else { return .failure(parsedRes.failure!) }
+        let form: ParsedReplyForm
+        switch parsedRes {
+        case .success(let f): form = f
+        case .failure(let err): return .failure(err)
+        }
 
         // 2) 拼装 POST 体：全部 hidden 字段 + 回复内容；submit 无 name 时不添加按钮字段
         var fields = form.hiddenFields
