@@ -96,8 +96,9 @@ workflows:
           # 从 .xcresult 结果包导出 XCTAttachment 截图（Xcode 自带工具，零额外依赖）。
           # UI 测试在模拟器沙盒内运行，沙盒 $TMPDIR 与 CI runner 不同，
           # 故不依赖临时目录，直接取结果包内的附件。
+          # 注意：Xcode 16 起 `xcresulttool export --type file` 被标记废弃，必须加 --legacy 才能使用旧行为。
           mkdir -p "$CM_BUILD_DIR/screenshots"
-          xcrun xcresulttool export \
+          xcrun xcresulttool export --legacy \
             --path "$CM_BUILD_DIR/test.xcresult" \
             --type file \
             --output-path "$CM_BUILD_DIR/screenshots" || true
@@ -106,6 +107,7 @@ workflows:
           echo "--- png 数量: $(find "$CM_BUILD_DIR/screenshots" -name '*.png' | wc -l) ---"
     artifacts:
       - screenshots/**/*.png
+      - screenshots/*.png
 
     # ==========================================================================
     #  Phase 2 —— 仅当上面 BUILD SUCCEEDED 后取消注释启用。
