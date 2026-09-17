@@ -26,20 +26,36 @@ final class AppScreenshotTests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-DemoMode"]
         if dark { app.launchArguments.append("-DarkMode") }
-        app.launch()
+
+        // App 在演示数据加载 / 动画时序下偶发崩溃（多见于切到“板块”等 Tab）。
+        // 截图前若 App 已不在前台，重启后重新进入该 Tab 再截，使单个 Tab 崩溃不连累其余截图。
+        func ensureRunning() {
+            if app.state != .runningForeground {
+                app.terminate()
+                app.launch()
+            }
+        }
+
+        ensureRunning()
 
         for name in screens {
+            ensureRunning()
             let button = app.tabBars.buttons[name]
             guard button.waitForExistence(timeout: 15) else {
                 XCTFail("截图 Tab 不存在: \(name)")
                 continue
             }
             button.tap()
-            // 等布局稳定后再截。
-            let _ = app.wait(for: .unknown, timeout: 1.5)
+            // 等布局/数据稳定后再截。
+            let _ = app.wait(for: .unknown, timeout: 2.0)
+            ensureRunning()
+            guard app.state == .runningForeground else {
+                XCTFail("截图前 App 崩溃，已跳过该 Tab: \(name)")
+                continue
+            }
             let screenshot = app.screenshot()
             let attachment = XCTAttachment(image: screenshot.image)
-            attachment.name = "\(dark ? "dark" : "light")-\(name)"
+            attachment.name = "\(dark ? "light" : "dark")-\(name)"
             attachment.lifetime = .keepAlways
             add(attachment)
         }

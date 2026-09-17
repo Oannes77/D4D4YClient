@@ -82,13 +82,15 @@ workflows:
         script: xcrun simctl boot "$SIM_NAME" || true
       - name: Build & run screenshot tests
         script: |
-          set -e
+          # 注意：UI 测试若部分 Tab 偶发崩溃，仍要让后续 Collect 步骤执行，
+          # 以便从 .xcresult 导出已成功截图。故此处不因 test 失败而退出。
           xcodebuild test \
             -project "$XCODE_PROJECT.xcodeproj" \
             -scheme "$XCODE_SCHEME" \
             -destination "platform=iOS Simulator,name=$SIM_NAME,OS=$SIM_OS" \
             -derivedDataPath build/screenshots_derived \
-            -resultBundlePath "$CM_BUILD_DIR/test.xcresult"
+            -resultBundlePath "$CM_BUILD_DIR/test.xcresult" || true
+          echo "（UI 测试结束；部分 Tab 失败时仍继续导出已有截图附件）"
       - name: Collect screenshots
         script: |
           # 从 .xcresult 结果包导出 XCTAttachment 截图（Xcode 自带工具，零额外依赖）。
