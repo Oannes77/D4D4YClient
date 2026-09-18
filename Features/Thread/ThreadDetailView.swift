@@ -51,6 +51,10 @@ struct ThreadDetailView: View {
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
+                // 稳定顶部锚点：内容异步加载后 scrollTo 此处可可靠回到首帖顶部，
+                // 避免 LazyVStack 首条 cell 未渲染时 scrollTo 失效导致截图卡在长帖中间。
+                Color.clear.id("detailTop").frame(height: 0)
+
                 switch viewModel.state {
                 case .idle, .loading:
                     ProgressView("加载帖子…")
@@ -95,9 +99,9 @@ struct ThreadDetailView: View {
             .onChange(of: viewModel.state) { newState in
                 // 数据加载完成后，若未要求跳到最后回复，则滚回首帖顶部，
                 // 避免 ScrollView 内容高度突变后滚动偏移异常（尤其在演示截图时）。
-                if !jumpToLast, case .loaded(let page) = newState, let first = page.posts.first {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                        withAnimation { proxy.scrollTo("post-\(first.id)", anchor: .top) }
+                if !jumpToLast, case .loaded = newState {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                        withAnimation { proxy.scrollTo("detailTop", anchor: .top) }
                     }
                 }
             }

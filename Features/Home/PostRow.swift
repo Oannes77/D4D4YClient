@@ -51,6 +51,7 @@ struct PostRow: View {
                     .multilineTextAlignment(.leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .accessibilityIdentifier("home-post-open")
 
             // 预览正文（3 行截断 + …）
             Button { onOpen() } label: {
