@@ -45,3 +45,18 @@ extension Loadable {
         Loadable(error: error)
     }
 }
+
+// MARK: - Equatable
+/// 按枚举 case 比较（不比较关联值），使 `onChange(of: viewModel.state)` 在 SwiftUI 中可用。
+/// 仅用于感知「加载中 → 加载完成」等状态跃迁；关联值变化视为相等。
+extension Loadable: Equatable {
+    static func == (lhs: Loadable<T>, rhs: Loadable<T>) -> Bool {
+        switch (lhs, rhs) {
+        case (.idle, .idle):         return true
+        case (.loading, .loading):   return true
+        case (.loaded, .loaded):     return true
+        case (.failed, .failed):     return true
+        default:                     return false
+        }
+    }
+}
