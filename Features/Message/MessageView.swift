@@ -20,9 +20,9 @@ struct MessageView: View {
                 List {
                     switch segment {
                     case .pm:
-                        ForEach(MessageData.pm) { MessageRow($0) }
+                        ForEach(MessageData.pm) { MessageRow(item: $0) }
                     case .system:
-                        ForEach(MessageData.system) { MessageRow($0) }
+                        ForEach(MessageData.system) { MessageRow(item: $0) }
                     }
                 }
                 .listStyle(.plain)
