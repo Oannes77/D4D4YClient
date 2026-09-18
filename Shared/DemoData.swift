@@ -112,7 +112,7 @@ enum DemoData {
                 points: 1520,
                 views: 3820,
                 hasImage: true,
-                imageURL: URL(string: "https://img02.4d4y.com/forum/2026/09/10/001.jpg"),
+                imageURL: URL(string: "https://placehold.co/600x400/534AB7/FFFFFF/png?text=Bambu+X1C"),
                 hasAttachment: false,
                 attachmentCount: 0
             ),
@@ -150,7 +150,7 @@ enum DemoData {
                 points: 5310,
                 views: 12030,
                 hasImage: true,
-                imageURL: URL(string: "https://img02.4d4y.com/forum/2026/09/09/002.jpg"),
+                imageURL: URL(string: "https://placehold.co/600x400/8F86E8/FFFFFF/png?text=Palm+Treo+650"),
                 hasAttachment: false,
                 attachmentCount: 0
             ),

@@ -20,9 +20,9 @@ final class AppScreenshotTests: XCTestCase {
 
     /// 顺序即导航顺序：首页 →（点帖子）帖子详情 →（点回复）回复框；消息 / 我的 直接切 Tab。
     private let targets = [
-        Target(name: "首页", settle: 1.0),
-        Target(name: "帖子详情", settle: 3.0),
-        Target(name: "回复框", settle: 1.0),
+        Target(name: "首页", settle: 1.5),
+        Target(name: "帖子详情", settle: 4.0),
+        Target(name: "回复框", settle: 2.0),
         Target(name: "消息", settle: 1.5),
         Target(name: "我的", settle: 1.5),
     ]
@@ -46,6 +46,11 @@ final class AppScreenshotTests: XCTestCase {
 
             navigate(to: target.name, app: app)
 
+            guard app.state == .runningForeground else {
+                XCTFail("截图前 App 已不在前台: \(target.name)")
+                continue
+            }
+
             let screenshot = app.screenshot()
             // Xcode 16 的 XCUIScreenshot.pngRepresentation 返回非可选 Data，直接取值。
             let pngData = screenshot.pngRepresentation
@@ -60,55 +65,59 @@ final class AppScreenshotTests: XCTestCase {
     }
 
     private func navigate(to name: String, app: XCUIApplication) {
+        let tabBar = app.tabBars.firstMatch
+
         switch name {
         case "首页":
             // Demo 启动默认落在首页，无需额外操作。
             break
 
         case "消息":
-            let tab = app.tabBars.buttons["消息"].firstMatch
-            guard tab.waitForExistence(timeout: 8) else {
+            let tab = tabBar.buttons.element(boundBy: 1)
+            guard tab.waitForExistence(timeout: 10) else {
                 XCTFail("消息 Tab 不存在")
                 return
             }
             tab.tap()
 
         case "我的":
-            let tab = app.tabBars.buttons["我的"].firstMatch
-            guard tab.waitForExistence(timeout: 8) else {
+            let tab = tabBar.buttons.element(boundBy: 2)
+            guard tab.waitForExistence(timeout: 10) else {
                 XCTFail("我的 Tab 不存在")
                 return
             }
             tab.tap()
 
         case "帖子详情":
-            app.tabBars.buttons["首页"].firstMatch.tap()
+            let homeTab = tabBar.buttons.element(boundBy: 0)
+            if homeTab.waitForExistence(timeout: 10) { homeTab.tap() }
             let post = app.buttons["home-post-open"].firstMatch
-            guard post.waitForExistence(timeout: 8) else {
+            guard post.waitForExistence(timeout: 10) else {
                 XCTFail("首页帖子不可点（home-post-open 缺失）")
                 return
             }
             post.tap()
-            // 等详情加载（Demo 离线解析夹具）+ 首帖滚回顶部。
-            _ = app.wait(for: .unknown, timeout: 3.0)
+            // 等详情 push 动画 + HTMLContentView 异步渲染 + 首帖回顶。
+            _ = app.wait(for: .unknown, timeout: 4.0)
 
         case "回复框":
-            app.tabBars.buttons["首页"].firstMatch.tap()
+            let homeTab = tabBar.buttons.element(boundBy: 0)
+            if homeTab.waitForExistence(timeout: 10) { homeTab.tap() }
             let post = app.buttons["home-post-open"].firstMatch
-            guard post.waitForExistence(timeout: 8) else {
+            guard post.waitForExistence(timeout: 10) else {
                 XCTFail("首页帖子不可点（home-post-open 缺失）")
                 return
             }
             post.tap()
-            _ = app.wait(for: .unknown, timeout: 3.0)
+            _ = app.wait(for: .unknown, timeout: 4.0)
             let reply = app.buttons["detail-reply"].firstMatch
-            guard reply.waitForExistence(timeout: 8) else {
+            guard reply.waitForExistence(timeout: 10) else {
                 XCTFail("回复按钮不可点（detail-reply 缺失）")
                 return
             }
             reply.tap()
-            // 等回复 Sheet 弹出。
-            _ = app.wait(for: .unknown, timeout: 1.0)
+            // 等回复 Sheet 弹出并稳定。
+            _ = app.wait(for: .unknown, timeout: 2.0)
 
         default:
             break

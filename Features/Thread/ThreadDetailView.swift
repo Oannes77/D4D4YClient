@@ -53,7 +53,7 @@ struct ThreadDetailView: View {
             ScrollView {
                 // 稳定顶部锚点：内容异步加载后 scrollTo 此处可可靠回到首帖顶部，
                 // 避免 LazyVStack 首条 cell 未渲染时 scrollTo 失效导致截图卡在长帖中间。
-                Color.clear.id("detailTop").frame(height: 0)
+                Color.clear.id("detailTop").frame(height: 1)
 
                 switch viewModel.state {
                 case .idle, .loading:
@@ -95,12 +95,18 @@ struct ThreadDetailView: View {
             }
             .scrollContentBackground(.hidden)
             .background(Color.appBackground(scheme))
+            .navigationTitle(viewModel.thread.title)
             .navigationBarTitleDisplayMode(.inline)
+            // HTMLContentView 异步渲染会使 ScrollView contentSize 持续增长；
+            // iOS 17 defaultScrollAnchor 可在内容高度变化后把顶部锚定到安全区，
+            // 避免首帖被推到屏幕外（这是截图卡在长帖中间的根本原因）。
+            .defaultScrollAnchor(.top)
+            .toolbar(.hidden, for: .tabBar)
             .onChange(of: viewModel.state) { newState in
-                // 数据加载完成后，若未要求跳到最后回复，则滚回首帖顶部，
-                // 避免 ScrollView 内容高度突变后滚动偏移异常（尤其在演示截图时）。
+                // 兜底：数据加载完成且不要求跳最后回复时，显式滚回首帖顶部。
+                // 延迟稍长，给 HTMLContentView 异步渲染 NSAttributedString 留出时间。
                 if !jumpToLast, case .loaded = newState {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
                         withAnimation { proxy.scrollTo("detailTop", anchor: .top) }
                     }
                 }
