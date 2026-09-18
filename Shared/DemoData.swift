@@ -90,4 +90,89 @@ enum DemoData {
         ThreadMediaCache.upsert(imageInfo, context: context)
         ThreadMediaCache.upsert(attachmentInfo, context: context)
     }
+
+    // MARK: - 首页信息流样例（Threads 风格卡片）
+
+    /// 首页 Discovery 板块主题流样例：含标题 / 预览正文 / 单图 / 附件 / 统计，
+    /// 供首页卡片渲染（不触发网络）。真实模式将由 `forumdisplay` 解析 + 媒体感知合并替代。
+    static func homeFeedDemo() -> [HomeThreadItem] {
+        [
+            HomeThreadItem(
+                id: 193033,
+                boardName: "Discovery",
+                title: "[心得技巧] Bambu X1C 进料轮异响排查与润滑",
+                authorName: "老橡树",
+                authorID: 1024,
+                authorGroup: "论坛元老",
+                previewBody: "最近 X1C 打印到一半开始发出规律的「哒哒」异响，拆开进料组件发现进料轮橡胶圈有细微裂纹。换了第三方硅胶轮之后安静多了，顺便分享一下润滑点和扭矩，免得大家走弯路。",
+                createdAtRaw: "2 小时前",
+                replies: 36,
+                shares: 12,
+                favorites: 48,
+                points: 1520,
+                views: 3820,
+                hasImage: true,
+                imageURL: URL(string: "https://img02.4d4y.com/forum/2026/09/10/001.jpg"),
+                hasAttachment: false,
+                attachmentCount: 0
+            ),
+            HomeThreadItem(
+                id: 188120,
+                boardName: "Discovery",
+                title: "[求助] PETG 打印温度到底设多少？总拉丝",
+                authorName: "Kepler",
+                authorID: 2077,
+                authorGroup: "高级会员",
+                previewBody: "换了卷新 PETG，255℃ 还是拉丝严重，底板 65℃。是不是料太潮了？大家 PETG 一般怎么存，有没有推荐的烘干参数。",
+                createdAtRaw: "5 小时前",
+                replies: 23,
+                shares: 3,
+                favorites: 8,
+                points: 430,
+                views: 1290,
+                hasImage: false,
+                imageURL: nil,
+                hasAttachment: true,
+                attachmentCount: 2
+            ),
+            HomeThreadItem(
+                id: 190455,
+                boardName: "Discovery",
+                title: "[晒物] 收了台 Palm Treo 650，键盘手感绝了",
+                authorName: "Discovery控",
+                authorID: 888,
+                authorGroup: "论坛元老",
+                previewBody: "eBay 淘的 Treo 650 到货，键盘回弹比现代触屏舒服太多。刷了最新的 ROM，还能上 GPRS。复古 PDA 真香，准备写个长期把玩帖。",
+                createdAtRaw: "昨天",
+                replies: 102,
+                shares: 41,
+                favorites: 220,
+                points: 5310,
+                views: 12030,
+                hasImage: true,
+                imageURL: URL(string: "https://img02.4d4y.com/forum/2026/09/09/002.jpg"),
+                hasAttachment: false,
+                attachmentCount: 0
+            ),
+            HomeThreadItem(
+                id: 191200,
+                boardName: "Discovery",
+                title: "[讨论] 你们现在还用 SD 卡存 Gcode 吗",
+                authorName: "麦客爱苹果",
+                authorID: 522,
+                authorGroup: "中级会员",
+                previewBody: "现在基本都走 WiFi/OctoEverywhere 了，SD 卡反而容易丢文件。但断网的时候还是物理卡稳，纠结要不要保留这个习惯。",
+                createdAtRaw: "昨天",
+                replies: 17,
+                shares: 1,
+                favorites: 5,
+                points: 210,
+                views: 760,
+                hasImage: false,
+                imageURL: nil,
+                hasAttachment: false,
+                attachmentCount: 0
+            )
+        ]
+    }
 }

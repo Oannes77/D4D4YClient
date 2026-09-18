@@ -3,130 +3,138 @@ import SwiftData
 
 /// 帖子详情（真实数据：viewthread.php?tid=xx）。
 ///
-/// Sprint 7D 调整：
-/// - 底部融合 `ReplyEditor`：登录用户可输入回复，游客显示登录提示。
-/// - 回复成功后自动跳到帖子末页刷新，确认新楼层出现。
-/// - 楼层阅读布局：`PostCell`（头部 头像/用户名/时间/楼层 + 分隔线 + 正文/图片）。
-/// - 本地作者屏蔽：`@Query` 读取 `BlockedUser`，命中则 `PostCell` 显示「该用户内容已隐藏」。
-/// - 图片体验：`PostContent` 提取 `<img>` 以缩略图呈现，点击经 `fullScreenCover` 调起 `ImageViewer` 全屏缩放。
-/// - 阅读历史：`onAppear` 记录进入；`onDisappear` 写入当前页最后楼层 pid，支撑未来「继续阅读」。
+/// 2026-09-18 Threads 会话视图：
+/// - 首帖置顶 + 回复楼层流（ScrollView + ScrollViewReader）。
+/// - 每条作者名旁「眼睛」→ 只看该作者（互斥）。
+/// - 点「回复」→ 跳最后回复 + 底部回复 Sheet；长按某楼 → 引用并弹回复 Sheet。
+/// - 操作栏图标化：回复 / 站内转发 / 收藏 / 报告。
+/// - 本地作者屏蔽：命中 `BlockedUser` 时 `PostContent` 显示「该用户内容已隐藏」。
 struct ThreadDetailView: View {
     @StateObject private var viewModel: ThreadDetailViewModel
     @StateObject private var replyViewModel: ReplyViewModel
     @Environment(\.modelContext) private var modelContext
     @Environment(\.colorScheme) private var scheme
     @Query private var blockedUsers: [BlockedUser]
-    @State private var presentedImage: FullScreenImage?
 
-    /// 所属版块 ID（来自列表上下文），用于 ReadHistory.forumID；未知时为 nil。
+    @State private var presentedImage: FullScreenImage?
+    @State private var onlyAuthorUID: Int?
+    @State private var showReply = false
+    @State private var replyInitial = "Peace&Love"
+    @State private var selectedUser: Int?
+    @State private var showUserCard = false
+    @State private var jumpToLast = false
+
     private let forumID: Int?
 
-    init(thread: ForumThread, forumID: Int? = nil) {
+    init(thread: ForumThread, forumID: Int? = nil, jumpToLastReply: Bool = false) {
         self.forumID = forumID
+        self._jumpToLast = State(initialValue: jumpToLastReply)
         _viewModel = StateObject(wrappedValue: ThreadDetailViewModel(thread: thread))
         _replyViewModel = StateObject(wrappedValue: ReplyViewModel(tid: thread.id))
     }
 
-    /// 仅已知 tid / 标题时（如首页最近浏览）进入详情。
-    /// ThreadDetailViewModel 仅依赖 thread.tid 加载，其余字段给合理默认值即可。
     init(tid: Int, title: String, forumID: Int? = nil) {
         self.forumID = forumID
-        let thread = ForumThread(
+        _viewModel = StateObject(wrappedValue: ThreadDetailViewModel(thread: ForumThread(
             id: tid, title: title, typeName: nil,
             authorName: "", authorID: nil,
             createdAt: nil, createdAtRaw: "",
             replies: nil, views: nil,
-            lastReplyUserName: nil, lastReplyAtRaw: nil)
-        _viewModel = StateObject(wrappedValue: ThreadDetailViewModel(thread: thread))
+            lastReplyUserName: nil, lastReplyAtRaw: nil)))
         _replyViewModel = StateObject(wrappedValue: ReplyViewModel(tid: tid))
     }
 
-    /// 本地已屏蔽作者 uid 集合（用于逐楼层判定）。
     private var blockedUIDs: Set<Int> {
         Set(blockedUsers.compactMap { $0.uid })
     }
 
     var body: some View {
-        List {
-            switch viewModel.state {
-            case .idle, .loading:
-                ProgressView("加载帖子…")
-                    .frame(maxWidth: .infinity, alignment: .center)
-            case .failed(let message, let detail):
-                ErrorRow(message: message, debugDetail: detail, retry: {
-                    Task { await viewModel.load(page: 1) }
-                })
-            case .loaded(let pageData):
-                Text(pageData.title)
-                    .font(.title3)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(Color.appTextPrimary(scheme))
-                    .listRowBackground(Color.appBackground(scheme))
-
-                ForEach(pageData.posts) { post in
-                    PostCell(
-                        post: post,
-                        isBlocked: post.authorID.map { blockedUIDs.contains($0) } ?? false,
-                        onImageTap: { url in presentedImage = FullScreenImage(url: url) }
-                    )
-                    .listRowBackground(Color.appBackground(scheme))
+        ScrollViewReader { proxy in
+            ScrollView {
+                switch viewModel.state {
+                case .idle, .loading:
+                    ProgressView("加载帖子…")
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.top, 60)
+                        .foregroundStyle(Color.appTextSecondary(scheme))
+                case .failed(let message, let detail):
+                    ErrorRow(message: message, debugDetail: detail, retry: {
+                        Task { await viewModel.load(page: 1) }
+                    })
+                case .loaded(let pageData):
+                    LazyVStack(spacing: 0) {
+                        ForEach(pageData.posts) { post in
+                            if onlyAuthorUID == nil || post.authorID == onlyAuthorUID {
+                                PostDetailRow(
+                                    post: post,
+                                    isOP: post.id == pageData.posts.first?.id,
+                                    onlyAuthorUID: $onlyAuthorUID,
+                                    onUser: { uid in selectedUser = uid; showUserCard = true },
+                                    onReply: {
+                                        withAnimation { proxy.scrollTo("lastReply", anchor: .bottom) }
+                                        showReply = true
+                                    },
+                                    onQuote: { p in
+                                        replyInitial = "引用 \(p.authorName)：\n" + quotePreview(p.htmlContent)
+                                        showReply = true
+                                    },
+                                    onImageTap: { url in presentedImage = FullScreenImage(url: url) }
+                                )
+                                .id("post-\(post.id)")
+                                .background(Color.appBackground(scheme))
+                                Divider().background(Color.appDivider(scheme))
+                            }
+                        }
+                        Color.clear.id("lastReply")
+                    }
                 }
-
-                paginationFooter(pageInfo: pageData.pageInfo)
-                    .listRowBackground(Color.appBackground(scheme))
             }
-        }
-        .listStyle(.plain)
-        .scrollContentBackground(.hidden)
-        .background(Color.appBackground(scheme))
-        .navigationBarTitleDisplayMode(.inline)
-        .task {
-            if DemoMode.isOn {
-                await viewModel.loadDemo()
-            } else {
-                await viewModel.loadFirstPage()
+            .scrollContentBackground(.hidden)
+            .background(Color.appBackground(scheme))
+            .navigationBarTitleDisplayMode(.inline)
+            .task {
+                if DemoMode.isOn {
+                    await viewModel.loadDemo()
+                } else {
+                    await viewModel.loadFirstPage()
+                }
             }
-        }
-        .onAppear {
-            ReadHistory.record(tid: viewModel.thread.id,
-                               title: viewModel.thread.title,
-                               forumID: forumID,
-                               context: modelContext)
-        }
-        .onDisappear {
-            // 写入当前页最后浏览到的楼层 pid，支撑未来「继续阅读」。
-            if case .loaded(let page) = viewModel.state,
-               let lastPost = page.posts.last {
+            .onAppear {
                 ReadHistory.record(tid: viewModel.thread.id,
                                    title: viewModel.thread.title,
                                    forumID: forumID,
-                                   lastReadPostID: lastPost.id,
                                    context: modelContext)
+                if jumpToLast {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        withAnimation { proxy.scrollTo("lastReply", anchor: .bottom) }
+                    }
+                }
             }
-        }
-        .fullScreenCover(item: $presentedImage) { item in
-            ImageViewer(url: item.url)
-        }
-        .safeAreaInset(edge: .bottom) {
-            ReplyEditor(viewModel: replyViewModel) {
-                Task { await viewModel.refreshToLastPage() }
+            .onDisappear {
+                if case .loaded(let page) = viewModel.state,
+                   let lastPost = page.posts.last {
+                    ReadHistory.record(tid: viewModel.thread.id,
+                                       title: viewModel.thread.title,
+                                       forumID: forumID,
+                                       lastReadPostID: lastPost.id,
+                                       context: modelContext)
+                }
+            }
+            .fullScreenCover(item: $presentedImage) { item in
+                ImageViewer(url: item.url)
+            }
+            .sheet(isPresented: $showReply) {
+                ReplySheet(tid: viewModel.thread.id, initial: replyInitial) { _ in }
+            }
+            .sheet(isPresented: $showUserCard) {
+                if let uid = selectedUser { UserCardSheet(userID: uid) }
             }
         }
     }
 
-    @ViewBuilder
-    private func paginationFooter(pageInfo: PageInfo) -> some View {
-        HStack {
-            Button("上一页") { Task { await viewModel.goToPreviousPage() } }
-                .disabled(pageInfo.previousPageURL == nil)
-            Spacer()
-            Text("第 \(pageInfo.currentPage) / \(pageInfo.totalPages) 页")
-                .font(.footnote)
-                .foregroundStyle(Color.appTextSecondary(scheme))
-            Spacer()
-            Button("下一页") { Task { await viewModel.goToNextPage() } }
-                .disabled(pageInfo.nextPageURL == nil)
-        }
-        .buttonStyle(.bordered)
+    /// 把楼层 HTML 正文粗略转纯文本并截断，作为引用预览。
+    private func quotePreview(_ html: String) -> String {
+        let stripped = html.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
+        return String(stripped.prefix(40))
     }
 }

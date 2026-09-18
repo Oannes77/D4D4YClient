@@ -14,26 +14,21 @@ struct ScreenshotGalleryView: View {
             HomeView()
                 .tabItem { Label("首页", systemImage: "house") }
 
-            ForumListView()
-                .tabItem { Label("板块", systemImage: "square.stack.3d.up") }
+            MessageView()
+                .tabItem { Label("消息", systemImage: "bell") }
+                .badge(3)
+
+            ProfileView()
+                .tabItem { Label("我的", systemImage: "person") }
 
             ThreadDetailView(thread: DemoData.sampleThread)
                 .tabItem { Label("帖子详情", systemImage: "doc.text") }
 
             NavigationStack {
-                ReplyEditor(viewModel: ReplyViewModel(tid: 1)) { }
+                ReplySheet(tid: DemoData.sampleThread.id) { _ in }
                     .navigationTitle("回复")
             }
             .tabItem { Label("回复框", systemImage: "square.and.pencil") }
-
-            Group {
-                if let url = DemoData.sampleImageURL {
-                    ImageViewer(url: url)
-                } else {
-                    Color.black.ignoresSafeArea()
-                }
-            }
-            .tabItem { Label("图片预览", systemImage: "photo") }
         }
         .tint(Color.appPrimary(scheme))
         .preferredColorScheme(DemoMode.isDark ? .dark : nil)

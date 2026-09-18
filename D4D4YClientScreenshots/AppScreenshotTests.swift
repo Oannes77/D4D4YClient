@@ -7,7 +7,7 @@ import XCTest
 /// 不依赖任何模拟器沙盒临时目录（避免 host 与模拟器 $TMPDIR 不一致导致收集不到）。
 final class AppScreenshotTests: XCTestCase {
 
-    private let screens = ["首页", "板块", "帖子详情", "回复框", "图片预览"]
+    private let screens = ["首页", "消息", "我的", "帖子详情", "回复框"]
 
     override func setUpWithError() throws {
         // 尽量多截几张：单个 Tab 缺失不阻断其余截图。

@@ -1,123 +1,113 @@
 import SwiftUI
-import SwiftData
 
-/// 首页：常用板块 + 最近浏览 + 最近帖子。
+/// 首页：板块主题列表（Threads 风格信息流）。
 ///
-/// UI 方向：
-/// - 取消顶部 Banner，不做营销首页。
-/// - 板块入口以纯文字列表为主，配合极简线性 SF Symbols。
-/// - 三块数据全部来自本地 SwiftData，不触发网络。
+/// 2026-09-18 框架：首页 = 板块主题列表，非 Dashboard。
+/// - 顶部板块切换条（Discovery 默认高亮），可左右滑切板块；点选即刷新该板块。
+/// - 折叠搜索栏（上推隐藏 / 滚到顶出现）。
+/// - 帖子卡片流：标题加粗 + 正文 3 行截断 + 单图 + 附件回形针 + 全图标操作栏。
+/// - 右下角紫色 FAB 发帖（仅首页）。
+/// - 点击区域收敛：仅 标题/正文/图/附件/回复数 进详情；作者头像/名 弹用户卡。
 struct HomeView: View {
     @Environment(\.colorScheme) private var scheme
-    @Environment(\.modelContext) private var modelContext
-    @Query(sort: [SortDescriptor(\PinnedForum.sortOrder, order: .forward)]) private var pinned: [PinnedForum]
-    @Query(sort: [SortDescriptor(\ReadHistory.lastReadTime, order: .reverse)]) private var history: [ReadHistory]
-    @Query(sort: [SortDescriptor(\VisitedForum.lastVisitedAt, order: .reverse)]) private var visited: [VisitedForum]
-    @StateObject private var viewModel = HomeViewModel()
+
+    @State private var feed: [HomeThreadItem] = []
+    @State private var boards = ["Discovery", "Buy & Sell", "Geek Talks", "Smartphone", "PalmOS"]
+    @State private var selectedBoard = "Discovery"
+    @State private var searchText = ""
+    @State private var searchCollapsed = false
+    @State private var selectedThread: HomeThreadItem?
+    @State private var jumpToLast = false
+    @State private var selectedUser: Int?
+    @State private var showUserCard = false
+    @State private var isRefreshing = false
 
     var body: some View {
         NavigationStack {
-            List {
-                Section {
-                    if pinned.isEmpty {
-                        placeholderText("还没有固定板块，去「板块」长按可固定")
-                    } else {
-                        ForEach(pinned) { forum in
-                            NavigationLink {
-                                ThreadListView(section: ForumSection(
-                                    id: forum.fid,
-                                    name: forum.name,
-                                    isSubForum: false))
-                            } label: {
-                                Label(forum.name, systemImage: "pin")
-                                    .foregroundStyle(Color.appTextPrimary(scheme))
-                            }
-                            .contextMenu {
-                                Button(role: .destructive) {
-                                    PinnedForum.unpin(fid: forum.fid, context: modelContext)
-                                } label: {
-                                    Label("取消固定", systemImage: "pin.slash")
-                                }
-                            }
-                        }
-                    }
-                } header: {
-                    SectionHeader(title: "常用板块")
-                }
-                .listRowBackground(Color.appBackground(scheme))
+            VStack(spacing: 0) {
+                BoardChips(boards: boards, selected: $selectedBoard, onSelect: { board in
+                    selectedBoard = board
+                    refreshBoard(board)
+                })
+                CollapsibleSearch(text: $searchText, collapsed: searchCollapsed)
 
-                Section {
-                    let recent = viewModel.limitedHistory(history, max: 10)
-                    if recent.isEmpty {
-                        placeholderText("还没有浏览记录")
-                    } else {
-                        ForEach(recent) { item in
-                            NavigationLink {
-                                ThreadDetailView(tid: item.tid, title: item.title)
-                            } label: {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(item.title)
-                                        .lineLimit(2)
-                                        .foregroundStyle(Color.appTextPrimary(scheme))
-                                    Text(item.lastReadTime, style: .relative)
-                                        .font(.caption2)
-                                        .foregroundStyle(Color.appTextTertiary(scheme))
-                                }
-                            }
-                        }
+                ScrollView {
+                    GeometryReader { geo in
+                        Color.clear
+                            .preference(key: ScrollOffsetKey.self,
+                                        value: geo.frame(in: .named("homeScroll")).minY)
                     }
-                } header: {
-                    SectionHeader(title: "最近浏览")
-                }
-                .listRowBackground(Color.appBackground(scheme))
+                    .frame(height: 0)
 
-                Section {
-                    if visited.isEmpty {
-                        placeholderText("还没有访问过板块")
+                    if feed.isEmpty {
+                        ProgressView(isRefreshing ? "正在刷新 \(selectedBoard) …" : "加载中…")
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .padding(.top, 80)
+                            .foregroundStyle(Color.appTextSecondary(scheme))
                     } else {
-                        ForEach(visited.prefix(12)) { forum in
-                            NavigationLink {
-                                ThreadListView(section: ForumSection(
-                                    id: forum.fid,
-                                    name: forum.name,
-                                    isSubForum: false))
-                            } label: {
-                                Label(forum.name, systemImage: "clock.arrow.circlepath")
-                                    .foregroundStyle(Color.appTextPrimary(scheme))
+                        LazyVStack(spacing: 0) {
+                            ForEach(feed) { item in
+                                PostRow(
+                                    item: item,
+                                    onOpen: { selectedThread = item },
+                                    onReply: { selectedThread = item; jumpToLast = true },
+                                    onUser: { uid in selectedUser = uid; showUserCard = true }
+                                )
+                                .background(Color.appBackground(scheme))
+                                Divider().background(Color.appDivider(scheme))
                             }
                         }
                     }
-                } header: {
-                    SectionHeader(title: "最近访问板块")
                 }
-                .listRowBackground(Color.appBackground(scheme))
+                .coordinateSpace(name: "homeScroll")
+                .onPreferenceChange(ScrollOffsetKey.self) { y in
+                    searchCollapsed = y < -8
+                }
             }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
             .background(Color.appBackground(scheme))
-            .navigationTitle("4D4Y")
+            .navigationTitle(selectedBoard)
+            .navigationBarTitleDisplayMode(.inline)
+            .overlay(alignment: .bottomTrailing) {
+                ComposeFAB { /* TODO: 发帖 */ }
+                    .padding(20)
+            }
+            .navigationDestination(item: $selectedThread) { item in
+                ThreadDetailView(
+                    thread: ForumThread(
+                        id: item.id, title: item.title, typeName: nil,
+                        authorName: item.authorName, authorID: item.authorID,
+                        createdAt: nil, createdAtRaw: item.createdAtRaw,
+                        replies: item.replies, views: item.views,
+                        lastReplyUserName: nil, lastReplyAtRaw: nil
+                    ),
+                    jumpToLastReply: jumpToLast
+                )
+                .onAppear { jumpToLast = false }
+            }
+            .sheet(isPresented: $showUserCard) {
+                if let uid = selectedUser { UserCardSheet(userID: uid) }
+            }
+        }
+        .task {
+            if DemoMode.isOn { feed = DemoData.homeFeedDemo() }
         }
     }
 
-    private func placeholderText(_ text: String) -> some View {
-        Text(text)
-            .font(.subheadline)
-            .foregroundStyle(Color.appTextTertiary(scheme))
+    private func refreshBoard(_ board: String) {
+        isRefreshing = true
+        // Demo：离线无多板块夹具，统一回放 Discovery 样例。
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            feed = DemoData.homeFeedDemo()
+            isRefreshing = false
+        }
     }
 }
 
-// MARK: - SectionHeader
+// MARK: - 滚动偏移偏好（驱动搜索栏折叠）
 
-/// 论坛化首页分组标题：小号、低存在感的文字，不使用大写强调色。
-private struct SectionHeader: View {
-    let title: String
-    @Environment(\.colorScheme) private var scheme
-
-    var body: some View {
-        Text(title)
-            .font(.footnote)
-            .fontWeight(.semibold)
-            .foregroundStyle(Color.appTextSecondary(scheme))
-            .textCase(nil)
+private struct ScrollOffsetKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
     }
 }

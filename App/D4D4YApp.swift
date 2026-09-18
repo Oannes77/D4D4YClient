@@ -56,8 +56,9 @@ struct RootView: View {
             HomeView()
                 .tabItem { Label("首页", systemImage: "house") }
 
-            ForumListView()
-                .tabItem { Label("板块", systemImage: "square.stack.3d.up") }
+            MessageView()
+                .tabItem { Label("消息", systemImage: "bell") }
+                .badge(3)
 
             ProfileView()
                 .tabItem { Label("我的", systemImage: "person") }
