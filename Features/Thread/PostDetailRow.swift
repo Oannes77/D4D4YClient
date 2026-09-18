@@ -66,16 +66,14 @@ struct PostDetailRow: View {
             PostContent(post: post, isBlocked: false, onImageTap: onImageTap)
 
             // 操作栏
-            HStack(spacing: 22) {
+            HStack(spacing: 28) {
                 Button { onReply() } label: {
                     Image(systemName: "bubble.right")
-                    Text("回复").font(.caption)
                 }
                 .foregroundStyle(Color.appTextSecondary(scheme))
 
                 Button { } label: {
                     Image(systemName: "arrowshape.turn.up.right")
-                    Text("转发").font(.caption)
                 }
                 .foregroundStyle(Color.appTextSecondary(scheme))
 
@@ -83,13 +81,11 @@ struct PostDetailRow: View {
                     favorited.toggle()
                 } label: {
                     Image(systemName: favorited ? "star.fill" : "star")
-                    Text("收藏").font(.caption)
                 }
                 .foregroundStyle(favorited ? Color.appGold(scheme) : Color.appTextSecondary(scheme))
 
                 Button { } label: {
                     Image(systemName: "exclamationmark.bubble")
-                    Text("报告").font(.caption)
                 }
                 .foregroundStyle(Color.appTextSecondary(scheme))
 

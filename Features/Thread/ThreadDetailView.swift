@@ -92,6 +92,15 @@ struct ThreadDetailView: View {
             .scrollContentBackground(.hidden)
             .background(Color.appBackground(scheme))
             .navigationBarTitleDisplayMode(.inline)
+            .onChange(of: viewModel.state) { newState in
+                // 数据加载完成后，若未要求跳到最后回复，则滚回首帖顶部，
+                // 避免 ScrollView 内容高度突变后滚动偏移异常（尤其在演示截图时）。
+                if !jumpToLast, case .loaded(let page) = newState, let first = page.posts.first {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                        withAnimation { proxy.scrollTo("post-\(first.id)", anchor: .top) }
+                    }
+                }
+            }
             .task {
                 if DemoMode.isOn {
                     await viewModel.loadDemo()
