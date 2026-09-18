@@ -57,10 +57,8 @@ final class AppScreenshotTests: XCTestCase {
             }
 
             let screenshot = app.screenshot()
-            guard let pngData = screenshot.pngRepresentation else {
-                XCTFail("无法生成截图 PNG 数据: \(name)")
-                continue
-            }
+            // Xcode 16 的 XCUIScreenshot.pngRepresentation 返回非可选 Data，直接取值。
+            let pngData = screenshot.pngRepresentation
             // 强制 public.png，避免 Xcode 16 / iOS 18.2 默认输出 HEIC，导致 xcresulttool export 后 find *.png 得到 0 张。
             let attachment = XCTAttachment(data: pngData, uniformTypeIdentifier: "public.png")
             attachment.name = "\(dark ? "dark" : "light")-\(name)"
