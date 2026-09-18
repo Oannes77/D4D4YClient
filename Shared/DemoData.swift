@@ -12,18 +12,22 @@ enum DemoData {
     // MARK: - 样例模型
 
     /// 帖子详情 Tab 使用的样例主题（真实 tid 与夹具对应）。
+    /// 帖子详情 Demo 使用的样例主题，标题与 `viewthread_tid193033_page1.html` 夹具保持一致，
+    /// 避免首页点进来后导航栏标题与正文内容出现明显错位。
+    /// 帖子详情 Demo 使用的样例主题，标题与 `viewthread_tid193033_page1.html` 夹具保持一致，
+    /// 避免首页点进来后导航栏标题与正文内容出现明显错位。
     static let sampleThread = ForumThread(
         id: 193033,
-        title: "[心得技巧] Bambu X1C 进料轮异响排查与润滑",
+        title: "[心得技巧] Hi-pda PPC有关精华贴汇总，初学者和疑惑者进06年7月",
         typeName: "[心得技巧]",
-        authorName: "演示作者",
-        authorID: 12345,
+        authorName: "EC",
+        authorID: 1142,
         createdAt: nil,
-        createdAtRaw: "2026-09-10",
+        createdAtRaw: "2004-7-22 00:42",
         replies: 36,
         views: nil,
-        lastReplyUserName: "热心网友",
-        lastReplyAtRaw: "2026-09-15"
+        lastReplyUserName: "EC",
+        lastReplyAtRaw: "2004-7-22 00:44"
     )
 
     /// 图片预览 Tab 使用的本地样例图（随 App 打包，无需联网即可加载）。
@@ -61,7 +65,7 @@ enum DemoData {
             PinnedForum.pin(fid: f.1, name: f.0, context: context)
         }
         // 最近浏览（首页「最近浏览」）
-        for h in [("Bambu X1C 进料轮异响排查与润滑", 193033),
+        for h in [("Hi-pda PPC有关精华贴汇总，初学者和疑惑者进06年7月", 193033),
                   ("PETG 打印温度到底设多少", 188120)] {
             ReadHistory.record(tid: h.1, title: h.0, forumID: 14, context: context)
         }
@@ -100,11 +104,11 @@ enum DemoData {
             HomeThreadItem(
                 id: 193033,
                 boardName: "Discovery",
-                title: "[心得技巧] Bambu X1C 进料轮异响排查与润滑",
-                authorName: "老橡树",
-                authorID: 1024,
+                title: "[心得技巧] Hi-pda PPC有关精华贴汇总，初学者和疑惑者进06年7月",
+                authorName: "EC",
+                authorID: 1142,
                 authorGroup: "论坛元老",
-                previewBody: "最近 X1C 打印到一半开始发出规律的「哒哒」异响，拆开进料组件发现进料轮橡胶圈有细微裂纹。换了第三方硅胶轮之后安静多了，顺便分享一下润滑点和扭矩，免得大家走弯路。",
+                previewBody: "以前ch4chen曾经编制过一篇hi-pda中PPC精华贴的汇总，但是上次网难以后，所有链接失效了，最近下定决心，重新将16页、每页40条、共约600条精华贴全部翻了出来。",
                 createdAtRaw: "2 小时前",
                 replies: 36,
                 shares: 12,
@@ -112,7 +116,7 @@ enum DemoData {
                 points: 1520,
                 views: 3820,
                 hasImage: true,
-                imageURL: URL(string: "https://placehold.co/600x400/534AB7/FFFFFF/png?text=Bambu+X1C"),
+                imageURL: URL(string: "https://placehold.co/600x400/534AB7/FFFFFF/png?text=PPC+Essentials"),
                 hasAttachment: false,
                 attachmentCount: 0
             ),

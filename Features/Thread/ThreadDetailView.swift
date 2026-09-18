@@ -51,8 +51,7 @@ struct ThreadDetailView: View {
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                // 稳定顶部锚点：内容异步加载后 scrollTo 此处可可靠回到首帖顶部，
-                // 避免 LazyVStack 首条 cell 未渲染时 scrollTo 失效导致截图卡在长帖中间。
+                // 顶部稳定锚点：即使首帖尚未完成异步渲染，也能给 ScrollViewReader 一个可靠目标。
                 Color.clear.id("detailTop").frame(height: 1)
 
                 switch viewModel.state {
@@ -66,16 +65,18 @@ struct ThreadDetailView: View {
                         Task { await viewModel.load(page: 1) }
                     })
                 case .loaded(let pageData):
-                    LazyVStack(spacing: 0) {
-                        ForEach(pageData.posts) { post in
+                    // 帖子详情首屏数据量有限，使用 VStack 确保首帖一加载即存在，
+                    // 避免 LazyVStack 延迟创建视图导致 scrollTo 首帖失效/截图卡在长帖中间。
+                    VStack(spacing: 0) {
+                        ForEach(Array(pageData.posts.enumerated()), id: \.element.id) { index, post in
                             if onlyAuthorUID == nil || post.authorID == onlyAuthorUID {
                                 PostDetailRow(
                                     post: post,
-                                    isOP: post.id == pageData.posts.first?.id,
+                                    isOP: index == 0,
                                     onlyAuthorUID: $onlyAuthorUID,
                                     onUser: { uid in selectedUser = uid; showUserCard = true },
                                     onReply: {
-                                        withAnimation { proxy.scrollTo("lastReply", anchor: .bottom) }
+                                        withoutAnimation { proxy.scrollTo("lastReply", anchor: .bottom) }
                                         showReply = true
                                     },
                                     onQuote: { p in
@@ -84,7 +85,7 @@ struct ThreadDetailView: View {
                                     },
                                     onImageTap: { url in presentedImage = FullScreenImage(url: url) }
                                 )
-                                .id("post-\(post.id)")
+                                .id(index == 0 ? "firstPost" : "post-\(post.id)")
                                 .background(Color.appBackground(scheme))
                                 Divider().background(Color.appDivider(scheme))
                             }
@@ -111,13 +112,14 @@ struct ThreadDetailView: View {
             }
             .toolbar(.hidden, for: .tabBar)
             .onChange(of: viewModel.state) { newState in
-                // 数据加载完成后，若未要求跳最后回复，则多次滚回首帖顶部，
-                // 覆盖 HTMLContentView 异步渲染导致内容高度逐步增长的时间窗，
-                // 避免截图卡在长帖中间（单次 scrollTo 时机易错过 HTML 渲染完成点）。
+                // 数据加载完成后，若未要求跳最后回复，则多次滚回首帖顶部。
+                // HTMLContentView 的 NSAttributedString 渲染在后台线程完成，完成后会逐步撑开内容高度，
+                // 单次 scrollTo 容易错过渲染完成点；这里覆盖从 0.3s 到 4.5s 的时间窗，
+                // 只要首帖视图已存在就持续把它置顶，避免截图卡在长帖中间。
                 if !jumpToLast, case .loaded = newState {
-                    for delay in [0.3, 0.8, 1.3, 1.8, 2.5] {
+                    for delay in [0.3, 0.8, 1.3, 1.8, 2.5, 3.5, 4.5] {
                         DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                            withAnimation { proxy.scrollTo("detailTop", anchor: .top) }
+                            withoutAnimation { proxy.scrollTo("firstPost", anchor: .top) }
                         }
                     }
                 }
@@ -136,7 +138,7 @@ struct ThreadDetailView: View {
                                    context: modelContext)
                 if jumpToLast {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        withAnimation { proxy.scrollTo("lastReply", anchor: .bottom) }
+                        withoutAnimation { proxy.scrollTo("lastReply", anchor: .bottom) }
                     }
                 }
             }
