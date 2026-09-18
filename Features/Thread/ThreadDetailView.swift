@@ -76,7 +76,7 @@ struct ThreadDetailView: View {
                                     onlyAuthorUID: $onlyAuthorUID,
                                     onUser: { uid in selectedUser = uid; showUserCard = true },
                                     onReply: {
-                                        withoutAnimation { proxy.scrollTo("lastReply", anchor: .bottom) }
+                                        withAnimation(nil) { proxy.scrollTo("lastReply", anchor: .bottom) }
                                         showReply = true
                                     },
                                     onQuote: { p in
@@ -119,7 +119,7 @@ struct ThreadDetailView: View {
                 if !jumpToLast, case .loaded = newState {
                     for delay in [0.3, 0.8, 1.3, 1.8, 2.5, 3.5, 4.5] {
                         DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                            withoutAnimation { proxy.scrollTo("firstPost", anchor: .top) }
+                            withAnimation(nil) { proxy.scrollTo("firstPost", anchor: .top) }
                         }
                     }
                 }
@@ -138,7 +138,7 @@ struct ThreadDetailView: View {
                                    context: modelContext)
                 if jumpToLast {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        withoutAnimation { proxy.scrollTo("lastReply", anchor: .bottom) }
+                        withAnimation(nil) { proxy.scrollTo("lastReply", anchor: .bottom) }
                     }
                 }
             }
