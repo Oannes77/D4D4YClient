@@ -70,7 +70,6 @@ struct PostDetailRow: View {
                 Button { onReply() } label: {
                     Image(systemName: "bubble.right")
                 }
-                .accessibilityIdentifier("detail-reply")
                 .foregroundStyle(Color.appTextSecondary(scheme))
 
                 Button { } label: {

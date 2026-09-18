@@ -97,17 +97,28 @@ struct ThreadDetailView: View {
             .background(Color.appBackground(scheme))
             .navigationTitle(viewModel.thread.title)
             .navigationBarTitleDisplayMode(.inline)
-            // HTMLContentView 异步渲染会使 ScrollView contentSize 持续增长；
-            // iOS 17 defaultScrollAnchor 可在内容高度变化后把顶部锚定到安全区，
-            // 避免首帖被推到屏幕外（这是截图卡在长帖中间的根本原因）。
-            .defaultScrollAnchor(.top)
+            // 回复入口固定放在导航栏右上角（永远可见），供截图脚本稳定触发回复 Sheet；
+            // 帖子详情操作栏内仍保留回复图标（视觉一致）。
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showReply = true
+                    } label: {
+                        Image(systemName: "square.and.pencil")
+                    }
+                    .accessibilityIdentifier("detail-reply")
+                }
+            }
             .toolbar(.hidden, for: .tabBar)
             .onChange(of: viewModel.state) { newState in
-                // 兜底：数据加载完成且不要求跳最后回复时，显式滚回首帖顶部。
-                // 延迟稍长，给 HTMLContentView 异步渲染 NSAttributedString 留出时间。
+                // 数据加载完成后，若未要求跳最后回复，则多次滚回首帖顶部，
+                // 覆盖 HTMLContentView 异步渲染导致内容高度逐步增长的时间窗，
+                // 避免截图卡在长帖中间（单次 scrollTo 时机易错过 HTML 渲染完成点）。
                 if !jumpToLast, case .loaded = newState {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                        withAnimation { proxy.scrollTo("detailTop", anchor: .top) }
+                    for delay in [0.3, 0.8, 1.3, 1.8, 2.5] {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                            withAnimation { proxy.scrollTo("detailTop", anchor: .top) }
+                        }
                     }
                 }
             }
