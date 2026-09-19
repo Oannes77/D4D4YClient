@@ -77,6 +77,12 @@ enum DemoData {
         for v in [("技术交流", 14), ("模型下载", 20)] {
             VisitedForum.record(fid: v.1, name: v.0, context: context)
         }
+        // 阅读设置单例：缺省时补一条默认值，
+        // 避免「阅读设置」页因查不到 LocalSettings 而显示「设置未初始化」占位。
+        let settingsDescriptor = FetchDescriptor<LocalSettings>(predicate: #Predicate { $0.slot == "singleton" })
+        if (try? context.fetchCount(settingsDescriptor)) == 0 {
+            context.insert(LocalSettings())
+        }
     }
 
     /// 为帖子列表行注入 📷 / 📎 媒体标识（跳过网络检测，直接按 tid 标记）。
