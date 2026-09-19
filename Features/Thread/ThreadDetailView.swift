@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import UIKit
 
 /// 帖子详情（真实数据：viewthread.php?tid=xx）。
 ///
@@ -12,6 +13,9 @@ import SwiftData
 struct ThreadDetailView: View {
     @StateObject private var viewModel: ThreadDetailViewModel
     @StateObject private var replyViewModel: ReplyViewModel
+    /// 捕获帖子详情外层 `UIScrollView`，用于强制 `contentOffset.y = 0` 回顶。
+    /// 见 `ScrollCaptureView.swift`。
+    @StateObject private var scrollHolder = ScrollHolder()
     @Environment(\.modelContext) private var modelContext
     @Environment(\.colorScheme) private var scheme
     @Query private var blockedUsers: [BlockedUser]
@@ -51,6 +55,14 @@ struct ThreadDetailView: View {
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
+                // 1x1 透明视图：向上遍历 superview 链捕获外层 UIScrollView，
+                // 用于直接设置 contentOffset.y = 0 强制回顶（比 ScrollViewReader.scrollTo 可靠）。
+                ScrollCaptureRepresentable { sv in
+                    scrollHolder.scrollView = sv
+                }
+                .frame(width: 1, height: 1)
+                .opacity(0)
+
                 // 顶部稳定锚点：即使首帖尚未完成异步渲染，也能给 ScrollViewReader 一个可靠目标。
                 Color.clear.id("detailTop").frame(height: 1)
 
@@ -112,19 +124,9 @@ struct ThreadDetailView: View {
             }
             .toolbar(.hidden, for: .tabBar)
             .onChange(of: viewModel.state) { newState in
-                // 数据加载完成后，若未要求跳最后回复，则多次滚回首帖顶部。
-                // HTMLContentView 的 NSAttributedString 渲染在后台线程完成，完成后会逐步撑开内容高度，
-                // 单次 scrollTo 容易错过渲染完成点；这里覆盖从 0.3s 到 4.5s 的时间窗，
-                // 只要首帖视图已存在就持续把它置顶，避免截图卡在长帖中间。
-                if !jumpToLast, case .loaded = newState {
-                    // 密集 + 长周期回顶：首帖 HTMLContentView 同步渲染后，
-                    // UITextView 的 intrinsic size 仍需若干 layout pass 才稳定；
-                    // 覆盖到 8.0s，确保截图前内容高度不再增长、首帖始终置顶。
-                    for delay in [0.05, 0.1, 0.2, 0.3, 0.5, 0.8, 1.0, 1.3, 1.8, 2.5, 3.5, 4.5, 6.0, 8.0] {
-                        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                            withAnimation(nil) { proxy.scrollTo("firstPost", anchor: .top) }
-                        }
-                    }
+                // 数据加载完成后，多次强制滚回首帖顶部。
+                if case .loaded = newState {
+                    scheduleScrollToTop()
                 }
             }
             .task {
@@ -133,6 +135,7 @@ struct ThreadDetailView: View {
                 } else {
                     await viewModel.loadFirstPage()
                 }
+                scheduleScrollToTop()
             }
             .onAppear {
                 ReadHistory.record(tid: viewModel.thread.id,
@@ -141,7 +144,9 @@ struct ThreadDetailView: View {
                                    context: modelContext)
                 if jumpToLast {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        withAnimation(nil) { proxy.scrollTo("lastReply", anchor: .bottom) }
+                        guard let sv = scrollHolder.scrollView else { return }
+                        let targetY = max(0, sv.contentSize.height - sv.bounds.height)
+                        sv.setContentOffset(CGPoint(x: 0, y: targetY), animated: false)
                     }
                 }
             }
@@ -163,6 +168,17 @@ struct ThreadDetailView: View {
             }
             .sheet(isPresented: $showUserCard) {
                 if let uid = selectedUser { UserCardSheet(userID: uid) }
+            }
+        }
+    }
+
+    /// 多次强制把外层 UIScrollView 置顶。
+    /// 覆盖 HTML 渲染 / UITextView intrinsic size / 图片加载 导致 contentSize 增长的完整时间窗。
+    private func scheduleScrollToTop() {
+        guard !jumpToLast else { return }
+        for delay in [0.05, 0.1, 0.2, 0.3, 0.5, 0.8, 1.0, 1.3, 1.8, 2.5, 3.5, 4.5, 6.0, 8.0, 10.0] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                scrollHolder.scrollView?.setContentOffset(CGPoint(x: 0, y: 0), animated: false)
             }
         }
     }
