@@ -84,12 +84,14 @@ workflows:
         script: |
           # 注意：UI 测试若部分 Tab 偶发崩溃，仍要让后续 Collect 步骤执行，
           # 以便从 .xcresult 导出已成功截图。故此处不因 test 失败而退出。
+          # 完整输出 tee 到日志文件，供 Collect 步骤在 0 张时反查编译错误
+          # （否则编译失败被 `|| true` 吞掉，只能下载 1.9MB 大日志才看得出）。
           xcodebuild test \
             -project "$XCODE_PROJECT.xcodeproj" \
             -scheme "$XCODE_SCHEME" \
             -destination "platform=iOS Simulator,name=$SIM_NAME,OS=$SIM_OS" \
             -derivedDataPath build/screenshots_derived \
-            -resultBundlePath "$CM_BUILD_DIR/test.xcresult" || true
+            -resultBundlePath "$CM_BUILD_DIR/test.xcresult" 2>&1 | tee "$CM_BUILD_DIR/build_screenshots.log" || true
           echo "（UI 测试结束；部分 Tab 失败时仍继续导出已有截图附件）"
       - name: Collect screenshots
         script: |
@@ -102,7 +104,17 @@ workflows:
             --output-path "$CM_BUILD_DIR/screenshots"
           echo "--- 导出文件清单 (Collect step) ---"
           find "$CM_BUILD_DIR/screenshots" -type f | head -50
-          echo "--- png 数量: $(find "$CM_BUILD_DIR/screenshots" -name '*.png' | wc -l) ---"
+          PNG_COUNT=$(find "$CM_BUILD_DIR/screenshots" -name '*.png' | wc -l | tr -d ' ')
+          echo "--- png 数量: $PNG_COUNT ---"
+          # 防呆：0 张通常是主 App / 测试 target 编译失败导致测试未运行
+          # （被上面 `|| true` 静默吞掉）。直接在此打印 error 摘要，免下载大日志。
+          if [ "$PNG_COUNT" -eq 0 ]; then
+            echo ""
+            echo "!!! 警告：未导出任何 png 截图。常见根因是主 App / 测试 target 编译失败，"
+            echo "!!! 导致 xcodebuild 并未真正运行 UI 测试（即使上面步骤显示 '完成'）。"
+            echo "!!! 本次 build 日志中的 error 摘要如下（若为空则是运行时崩溃，需下载完整日志排查）："
+            grep -n "error:" "$CM_BUILD_DIR/build_screenshots.log" 2>/dev/null | head -30 || true
+          fi
     artifacts:
       - screenshots/**/*.png
       - screenshots/*.png
