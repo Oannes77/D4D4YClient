@@ -11,49 +11,48 @@ struct UserCardSheet: View {
     private var user: DemoUser { DemoUsers.dict[userID] ?? DemoUsers.fallback }
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 16) {
-                HStack(spacing: 12) {
-                    AvatarView(authorID: user.uid, authorName: user.name, size: 56)
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(user.name)
-                            .font(.title3).fontWeight(.bold)
-                            .foregroundStyle(Color.appTextPrimary(scheme))
-                        Text(user.signature)
-                            .font(.subheadline)
-                            .foregroundStyle(Color.appTextSecondary(scheme))
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                    }
-                    Spacer()
+        // 底部小弹窗：固定 detent 高度，只弹出能浏览完资料的高度，不占整屏。
+        VStack(spacing: 14) {
+            HStack(spacing: 12) {
+                AvatarView(authorID: user.uid, authorName: user.name, size: 52)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(user.name)
+                        .font(.title3).fontWeight(.bold)
+                        .foregroundStyle(Color.appTextPrimary(scheme))
+                    Text(user.signature)
+                        .font(.subheadline)
+                        .foregroundStyle(Color.appTextSecondary(scheme))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                 }
-
-                // 信息框（UID / 分组 / 帖数 / 积分）
-                HStack(spacing: 0) {
-                    infoCell("UID", user.uidString)
-                    Divider().frame(height: 28)
-                    infoCell("分组", user.group)
-                    Divider().frame(height: 28)
-                    infoCell("帖数", "\(user.posts)")
-                    Divider().frame(height: 28)
-                    infoCell("积分", "\(user.points)")
-                }
-                .padding(.vertical, 10)
-                .background(Color.appSurfaceSecondary(scheme))
-                .cornerRadius(12)
-
-                // 功能键（独立一行）
-                HStack(spacing: 10) {
-                    funcBtn("加好友", "person.badge.plus")
-                    funcBtn("私信", "envelope")
-                    funcBtn("搜贴", "magnifyingglass")
-                    funcBtn("拉黑", "nosign")
-                }
-
                 Spacer()
             }
-            .padding(16)
+
+            // 信息框（UID / 分组 / 帖数 / 积分）
+            HStack(spacing: 0) {
+                infoCell("UID", user.uidString)
+                Divider().frame(height: 28)
+                infoCell("分组", user.group)
+                Divider().frame(height: 28)
+                infoCell("帖数", "\(user.posts)")
+                Divider().frame(height: 28)
+                infoCell("积分", "\(user.points)")
+            }
+            .padding(.vertical, 10)
+            .background(Color.appSurfaceSecondary(scheme))
+            .cornerRadius(12)
+
+            // 功能键（独立一行）
+            HStack(spacing: 10) {
+                funcBtn("加好友", "person.badge.plus")
+                funcBtn("私信", "envelope")
+                funcBtn("搜贴", "magnifyingglass")
+                funcBtn("拉黑", "nosign")
+            }
         }
+        .padding(16)
+        .presentationDetents([.height(300)])
+        .presentationDragIndicator(.visible)
     }
 
     private func infoCell(_ title: String, _ value: String) -> some View {

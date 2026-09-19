@@ -25,6 +25,8 @@ final class AppScreenshotTests: XCTestCase {
     private let targets = [
         Target(screen: "home",        waitElement: "home-post-open", settle: 1.0),
         Target(screen: "thread",      waitElement: "detail-reply",   settle: 2.0),
+        // 回复楼层：启动后自动滚到页尾，展示 50 楼回复流 + 分页条。
+        Target(screen: "threadReplies", waitElement: "detail-page-prev", settle: 2.5),
         Target(screen: "reply",       waitElement: "取消",            settle: 1.5),
         Target(screen: "userCard",    waitElement: "加好友",           settle: 1.5),
         Target(screen: "imageViewer", waitElement: "",               settle: 2.0),

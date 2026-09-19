@@ -7,7 +7,8 @@ struct MessageChatView: View {
     let withUser: String
 
     @Environment(\.colorScheme) private var scheme
-    @State private var draft = "Peace&Love"
+    /// 私信不使用占位符：输入框初始为空，仅保留系统提示「发消息…」。
+    @State private var draft = ""
 
     private struct ChatLine: Identifiable {
         let id = UUID()

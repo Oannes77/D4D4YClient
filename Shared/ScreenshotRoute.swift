@@ -8,6 +8,7 @@ import SwiftData
 enum ScreenshotScreen: String, CaseIterable {
     case home                // 首页（板块主题流）
     case thread              // 帖子详情（首帖 + 回复楼层 + 分页条）
+    case threadReplies       // 帖子回复楼层（滚到页尾：回复流 + 分页条）
     case reply               // 回复框 Sheet
     case userCard            // 用户卡片 Sheet
     case imageViewer         // 图片全屏预览
@@ -82,12 +83,17 @@ struct ScreenshotRouteView: View {
                 ThreadDetailView(thread: DemoData.sampleThread, forumID: 2)
             }
             .background(Color.appBackground(scheme))
+        case .threadReplies:
+            NavigationStack {
+                ThreadDetailView(thread: DemoData.sampleThread, forumID: 2, jumpToLastReply: true)
+            }
+            .background(Color.appBackground(scheme))
         case .reply:
             NavigationStack {
                 ThreadDetailView(thread: DemoData.sampleThread, forumID: 2)
             }
             .sheet(isPresented: $showReply) {
-                ReplySheet(tid: DemoData.sampleThread.id, initial: "Peace&Love") { _ in }
+                ReplySheet(tid: DemoData.sampleThread.id) { _ in }
             }
         case .userCard:
             tabHost

@@ -19,7 +19,7 @@ struct ThreadDetailView: View {
     @State private var presentedImage: FullScreenImage?
     @State private var onlyAuthorUID: Int?
     @State private var showReply = false
-    @State private var replyInitial = "Peace&Love"
+    @State private var replyInitial = ""
     @State private var selectedUser: Int?
     @State private var showUserCard = false
     @State private var jumpToLast = false
@@ -55,17 +55,27 @@ struct ThreadDetailView: View {
         if DemoMode.isOn {
             // 恢复 ScrollView（真实会话流）：正文在 Demo 下已改用 SwiftUI Text（高度首帧确定），
             // 叠加 .defaultScrollAnchor(.top)，首帖头部必然置顶，不再漂移。
-            ScrollView {
-                detailContent(proxy: nil)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    detailContent(proxy: proxy)
+                }
+                .defaultScrollAnchor(.top)
+                .scrollContentBackground(.hidden)
+                .background(Color.appBackground(scheme))
+                .task {
+                    await viewModel.loadDemo()
+                    // 截图「回复楼层」目标：加载完成后滚到页尾，
+                    // 让 50 楼回复流与分页条出现在截图里。
+                    if jumpToLast {
+                        try? await Task.sleep(nanoseconds: 1_200_000_000)
+                        proxy.scrollTo("lastReply", anchor: .bottom)
+                    }
+                }
             }
-            .defaultScrollAnchor(.top)
-            .scrollContentBackground(.hidden)
-            .background(Color.appBackground(scheme))
                 .navigationTitle(viewModel.thread.title)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar { replyToolbarItem() }
                 .toolbar(.hidden, for: .tabBar)
-                .task { await viewModel.loadDemo() }
                 .onAppear { recordReadHistory() }
                 .onDisappear { recordLastReadPost() }
                 .fullScreenCover(item: $presentedImage) { item in

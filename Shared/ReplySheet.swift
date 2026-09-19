@@ -1,19 +1,30 @@
 import SwiftUI
 
 /// 帖子详情页底部回复弹窗（引用式）。
-/// 标题「我的回复」+ 输入框（默认填充占位符 Peace&Love，规避最短字数凑字）+ 回复按钮。
-/// 默认隐藏，仅点「回复」才出现，不遮挡看帖。
+/// 标题「我的回复」+ 多行大输入框 + 回复按钮。
+///
+/// 占位符（默认 Peace&Love，规避最短字数凑字）**不显示在输入框里**：
+/// 在输入框下方用最小字号斜体展示提示，提交时自动附加到回复末尾，
+/// 与用户真正输入的回复文字隔一个空行（Discuz 规则）。
 struct ReplySheet: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var scheme
+
     @State private var text: String
+    /// 自动附加的占位符（与回复正文隔行，作为发帖内容提交）。
+    private let placeholder: String
     let tid: Int
     let onSubmit: (String) -> Void
 
-    @Environment(\.colorScheme) private var scheme
-
-    init(tid: Int, initial: String = "Peace&Love", onSubmit: @escaping (String) -> Void) {
+    init(tid: Int,
+         initial: String = "",
+         placeholder: String = "Peace&Love",
+         onSubmit: @escaping (String) -> Void) {
         self.tid = tid
+        // initial 仅在「长按引用」时携带引用文本进输入框；默认为空，
+        // 占位符不进输入框（见下方说明行）。
         self._text = State(initialValue: initial)
+        self.placeholder = placeholder
         self.onSubmit = onSubmit
     }
 
@@ -28,8 +39,7 @@ struct ReplySheet: View {
                     .foregroundStyle(Color.appPrimary(scheme))
             }
 
-            // 多行大输入框：默认 6 行高度，内容超出时自动长高（最多 12 行），
-            // 让用户直观看到自己输入的回复内容。
+            // 多行大输入框：默认约 7 行高度，内容超出时自动长高（最多 14 行）。
             ZStack(alignment: .topLeading) {
                 if text.isEmpty {
                     Text("写回复…")
@@ -38,11 +48,11 @@ struct ReplySheet: View {
                         .padding(.leading, 6)
                 }
                 TextEditor(text: $text)
-                    .frame(minHeight: 140, maxHeight: 280, alignment: .topLeading)
+                    .frame(minHeight: 160, maxHeight: 320, alignment: .topLeading)
                     .scrollContentBackground(.hidden)
                     .foregroundStyle(Color.appTextPrimary(scheme))
             }
-            .frame(minHeight: 140, maxHeight: 280, alignment: .topLeading)
+            .frame(minHeight: 160, maxHeight: 320, alignment: .topLeading)
             .padding(4)
             .background(Color.appSurface(scheme))
             .overlay(
@@ -51,8 +61,18 @@ struct ReplySheet: View {
             )
             .cornerRadius(10)
 
+            // 占位符说明：最小字号 + 斜体，不进输入框；提交时自动附加并与正文隔行。
+            HStack(spacing: 4) {
+                Text("发布时自动附带（与回复正文隔一空行）")
+                Text(placeholder).fontWeight(.medium)
+            }
+            .font(.caption2)
+            .italic()
+            .foregroundStyle(Color.appTextTertiary(scheme))
+            .frame(maxWidth: .infinity, alignment: .leading)
+
             Button {
-                onSubmit(text)
+                onSubmit(composedBody)
                 dismiss()
             } label: {
                 Text("回复")
@@ -65,7 +85,13 @@ struct ReplySheet: View {
             }
         }
         .padding(16)
-        .presentationDetents([.fraction(0.6), .large])
+        .presentationDetents([.fraction(0.62), .large])
         .presentationDragIndicator(.visible)
+    }
+
+    /// 提交内容 = 用户输入 + 空行 + 占位符（占位符始终存在，规避凑字规则）。
+    private var composedBody: String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? placeholder : "\(trimmed)\n\n\(placeholder)"
     }
 }

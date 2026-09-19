@@ -10,7 +10,11 @@ struct NewPostView: View {
 
     @State private var board = "Discovery"
     @State private var title = ""
-    @State private var message = "Peace&Love"
+    /// 正文从空开始；占位符不进输入框（见正文下方的斜体说明），发布时自动隔行附加。
+    @State private var message = ""
+
+    /// 自动附加的占位符（规避最短字数凑字规则），与正文隔一个空行提交。
+    private let placeholder = "Peace&Love"
 
     private let boards = [
         "Discovery",
@@ -66,6 +70,15 @@ struct NewPostView: View {
                             .background(Color.appSurfaceSecondary(scheme))
                             .cornerRadius(10)
                             .foregroundStyle(Color.appTextPrimary(scheme))
+
+                        // 占位符说明：最小字号 + 斜体，不进正文框；发布时自动隔行附加。
+                        HStack(spacing: 4) {
+                            Text("发布时自动附带（与正文隔一空行）")
+                            Text(placeholder).fontWeight(.medium)
+                        }
+                        .font(.caption2)
+                        .italic()
+                        .foregroundStyle(Color.appTextTertiary(scheme))
                     }
 
                     // 附件
@@ -85,11 +98,22 @@ struct NewPostView: View {
                     Button("取消") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("发布") { dismiss() }
-                        .fontWeight(.semibold)
+                    Button("发布") {
+                        // 提交内容 = 用户输入 + 空行 + 占位符（占位符始终存在，规避凑字规则）。
+                        let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
+                        let body = trimmed.isEmpty ? placeholder : "\(trimmed)\n\n\(placeholder)"
+                        submit(board: board, title: title, message: body)
+                        dismiss()
+                    }
+                    .fontWeight(.semibold)
                 }
             }
         }
+    }
+
+    /// 提交发帖（真实模式接 Discuz post 接口；当前为演示占位）。
+    private func submit(board: String, title: String, message: String) {
+        // TODO: 接入 newthread.php / post.php 提交流程。
     }
 
     private func fieldLabel(_ text: String) -> some View {
