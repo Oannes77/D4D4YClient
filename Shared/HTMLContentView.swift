@@ -20,6 +20,7 @@ struct HTMLContentView: View {
     @Query private var settings: [LocalSettings]
 
     @State private var attributed: NSAttributedString?
+    @State private var plainDemo: String = ""
 
     /// 正文基准字号（px），来自阅读设置；缺省 17。
     private var fontSize: CGFloat {
@@ -33,23 +34,23 @@ struct HTMLContentView: View {
     init(html: String, syncWhenDemo: Bool = false) {
         self.html = html
         self.syncWhenDemo = syncWhenDemo
-        // 演示模式下初始化即同步渲染：body 首帧就是最终高度，
-        // 避免「占位 -> 真实高度」的跳变导致 ScrollView 内容漂移。
-        if DemoMode.isOn {
-            let style = UITraitCollection.current.userInterfaceStyle
-            let resolvedScheme: ColorScheme = style == .dark ? .dark : .light
-            _attributed = State(initialValue: Self.renderSync(
-                html: html,
-                fontSize: 17,
-                lineFactor: 1.5,
-                scheme: resolvedScheme
-            ))
-        }
+        // 演示模式：改用 SwiftUI Text 渲染纯文本（见 body），高度由文本测量在首帧同步确定，
+        // 从根本上消除 UITextView 内容高度懒计算导致的 ScrollView 初始位置漂移。
+        _plainDemo = State(initialValue: DemoMode.isOn ? Self.plainText(from: html) : "")
     }
 
     var body: some View {
         Group {
-            if let attributed {
+            if DemoMode.isOn {
+                // 演示模式：SwiftUI Text 渲染纯文本，高度首帧即确定，
+                // 配合 ThreadDetailView 的 ScrollView + .defaultScrollAnchor(.top)，
+                // 首帖头部必然显示在顶部，不会被超长正文推出屏幕。
+                Text(plainDemo)
+                    .font(.system(size: fontSize))
+                    .lineSpacing(fontSize * (lineFactor - 1.0))
+                    .foregroundStyle(Color.appTextPrimary(scheme))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else if let attributed {
                 AttributedTextView(attributed: attributed)
                     .frame(minHeight: 44)
             } else {
@@ -58,11 +59,21 @@ struct HTMLContentView: View {
             }
         }
         .task(id: html) {
-            // 演示模式下已在 init 同步渲染完毕，避免再次渲染造成高度跳变；
-            // 非演示模式仍走后台异步渲染。
+            // 演示模式已在 init 就绪纯文本；非演示模式走后台异步 HTML 渲染。
             guard !DemoMode.isOn else { return }
             attributed = await Self.render(html: html, fontSize: fontSize, lineFactor: lineFactor, scheme: scheme)
         }
+    }
+
+    /// 把 HTML 正文粗略转成纯文本（演示模式用：去掉标签与常见 HTML 实体）。
+    private static func plainText(from html: String) -> String {
+        html.replacingOccurrences(of: #"<[^>]+>"#, with: "", options: .regularExpression)
+            .replacingOccurrences(of: "&nbsp;", with: " ")
+            .replacingOccurrences(of: "&amp;", with: "&")
+            .replacingOccurrences(of: "&lt;", with: "<")
+            .replacingOccurrences(of: "&gt;", with: ">")
+            .replacingOccurrences(of: "&quot;", with: "\"")
+            .replacingOccurrences(of: "&#39;", with: "'")
     }
 
     /// UIKit 的 HTML 导入较慢，放在后台线程执行。

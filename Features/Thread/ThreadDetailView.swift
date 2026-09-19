@@ -53,12 +53,14 @@ struct ThreadDetailView: View {
         // SwiftUI ScrollView 滚动位置漂移，保证截图首帖（头像/作者/眼睛/操作栏）
         // 一定可见。正式 App 仍走原有 ScrollView 会话流。
         if DemoMode.isOn {
-            detailContent(proxy: nil)
-                // Demo/截图模式下不用 ScrollView，必须强制内容从顶部开始对齐；
-                // 否则 VStack 默认居中，超长内容会把首帖头部推到屏幕上方外面。
-                .frame(maxHeight: .infinity, alignment: .top)
-                .scrollContentBackground(.hidden)
-                .background(Color.appBackground(scheme))
+            // 恢复 ScrollView（真实会话流）：正文在 Demo 下已改用 SwiftUI Text（高度首帧确定），
+            // 叠加 .defaultScrollAnchor(.top)，首帖头部必然置顶，不再漂移。
+            ScrollView {
+                detailContent(proxy: nil)
+            }
+            .defaultScrollAnchor(.top)
+            .scrollContentBackground(.hidden)
+            .background(Color.appBackground(scheme))
                 .navigationTitle(viewModel.thread.title)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar { replyToolbarItem() }
