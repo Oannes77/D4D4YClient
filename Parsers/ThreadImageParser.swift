@@ -1,4 +1,5 @@
 import Foundation
+import SwiftSoup
 
 /// 解析帖子正文 HTML 中的真实内容图片。
 ///
@@ -33,6 +34,29 @@ struct ThreadImageParser {
         }
         Log.parser.debug("ThreadImageParser 内容图片数量 = \(result.count, privacy: .public)")
         return result
+    }
+
+    // MARK: - 首帖预览文本
+
+    /// 解析首帖纯文本摘要（首页卡片 3 行预览用）。
+    ///
+    /// 与图片检测共用同一次 viewthread 请求，不额外发请求。
+    /// 取「一楼正文 div.detailcon」，缺失时回退第一条回复 div.replycon。
+    /// - Parameter limit: 截断字数（默认 120，首页 3 行足够）。
+    static func parsePreviewText(from html: String, limit: Int = 120) -> String? {
+        do {
+            let doc = try SwiftSoup.parse(html)
+            let firstBlock = try doc.select("div.detailcon").first()
+            let block = firstBlock ?? (try doc.select("div.replycon").first())
+            guard let block else { return nil }
+            var text = try block.text()
+            text = text.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty else { return nil }
+            return text.count > limit ? String(text.prefix(limit)) + "…" : text
+        } catch {
+            return nil
+        }
     }
 
     // MARK: - 附件检测

@@ -33,13 +33,17 @@ struct PostRow: View {
                                 .foregroundStyle(Color.appTextSecondary(scheme))
                         }
                         Spacer()
-                        Text(item.createdAtRaw)
+                        if !item.createdAtRaw.isEmpty {
+                            Text(item.createdAtRaw)
+                                .font(.caption2)
+                                .foregroundStyle(Color.appTextTertiary(scheme))
+                        }
+                    }
+                    if !item.boardName.isEmpty {
+                        Text(item.boardName)
                             .font(.caption2)
                             .foregroundStyle(Color.appTextTertiary(scheme))
                     }
-                    Text(item.boardName)
-                        .font(.caption2)
-                        .foregroundStyle(Color.appTextTertiary(scheme))
                 }
             }
 
@@ -53,15 +57,17 @@ struct PostRow: View {
             }
             .accessibilityIdentifier("home-post-open")
 
-            // 预览正文（3 行截断 + …）
-            Button { onOpen() } label: {
-                Text(item.previewBody)
+            // 预览正文（3 行截断 + …）；真实列表页无正文时（尚未检测）不占空行
+            if !item.previewBody.isEmpty {
+                Button { onOpen() } label: {
+                    Text(item.previewBody)
                     .font(.subheadline)
                     .foregroundStyle(Color.appTextPrimary(scheme))
                     .lineLimit(3)
                     .truncationMode(.tail)
                     .multilineTextAlignment(.leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
 
             // 单图（点击进详情）
@@ -108,15 +114,19 @@ struct PostRow: View {
 
                 HStack(spacing: 3) {
                     Image(systemName: "diamond")
-                    Text("\(item.points)").font(.caption)
+                    if let points = item.points {
+                        Text("\(points)").font(.caption)
+                    }
                 }
                 .foregroundStyle(Color.appGold(scheme))
 
-                HStack(spacing: 3) {
-                    Image(systemName: "eye")
-                    Text("\(item.views)").font(.caption)
+                if let views = item.views {
+                    HStack(spacing: 3) {
+                        Image(systemName: "eye")
+                        Text("\(views)").font(.caption)
+                    }
+                    .foregroundStyle(Color.appTextSecondary(scheme))
                 }
-                .foregroundStyle(Color.appTextSecondary(scheme))
 
                 Spacer()
             }

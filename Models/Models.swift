@@ -74,6 +74,8 @@ struct ThreadPage {
 /// - hasImage        : 正文存在有效内容图片；
 /// - previewImageURL : 第一张有效内容图（点击 📷 预览用），无图时为 nil；
 /// - hasAttachment   : 正文含附件（文件型；列表不预览，进入帖子查看）。
+/// - previewText     : 首帖纯文本摘要（首页 3 行预览用，截断 120 字）；
+///                     与图片同一次 viewthread 请求顺带解析，不额外增加请求。
 /// 不保存图片数量 / 多缩略图 / 图墙，保持简单。
 struct ThreadMediaInfo: Hashable {
     let tid: Int
@@ -82,4 +84,15 @@ struct ThreadMediaInfo: Hashable {
     let previewImageURL: URL?
     /// 是否含附件（文件型；点击列表行进入帖子后查看）。
     let hasAttachment: Bool
+    /// 首帖纯文本摘要（用于首页正文预览）。解析失败时为 nil。
+    let previewText: String?
+
+    init(tid: Int, hasImage: Bool, previewImageURL: URL?,
+         hasAttachment: Bool, previewText: String? = nil) {
+        self.tid = tid
+        self.hasImage = hasImage
+        self.previewImageURL = previewImageURL
+        self.hasAttachment = hasAttachment
+        self.previewText = previewText
+    }
 }

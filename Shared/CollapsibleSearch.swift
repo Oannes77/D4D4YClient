@@ -5,6 +5,10 @@ import SwiftUI
 struct CollapsibleSearch: View {
     @Binding var text: String
     let collapsed: Bool
+    /// 占位提示（默认按当前板块提示）。
+    var placeholder: String = "搜索 4D4Y"
+    /// 回车提交（进入搜索结果页）。
+    var onSubmit: () -> Void = {}
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
@@ -13,9 +17,12 @@ struct CollapsibleSearch: View {
                 HStack(spacing: 8) {
                     Image(systemName: "magnifyingglass")
                         .foregroundStyle(Color.appTextTertiary(scheme))
-                    TextField("搜索 Discovery", text: $text)
+                    TextField(placeholder, text: $text)
                         .font(.subheadline)
                         .foregroundStyle(Color.appTextPrimary(scheme))
+                        .textInputAutocapitalization(.never)
+                        .submitLabel(.search)
+                        .onSubmit { onSubmit() }
                     Spacer()
                 }
                 .padding(10)

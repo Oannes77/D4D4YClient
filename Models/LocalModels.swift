@@ -222,14 +222,17 @@ final class ThreadMediaCache {
     /// 第一张有效正文图片（绝对 URL 字符串），无图时为 nil。
     var previewImageURL: String?
     var hasAttachment: Bool
+    /// 首帖纯文本摘要缓存（首页正文预览；与图片同一次检测写入，24h 有效）。
+    var previewText: String?
     var detectedAt: Date
 
     init(tid: Int, hasImage: Bool, previewImageURL: String?,
-         hasAttachment: Bool, detectedAt: Date = .now) {
+         hasAttachment: Bool, previewText: String? = nil, detectedAt: Date = .now) {
         self.tid = tid
         self.hasImage = hasImage
         self.previewImageURL = previewImageURL
         self.hasAttachment = hasAttachment
+        self.previewText = previewText
         self.detectedAt = detectedAt
     }
 
@@ -257,13 +260,15 @@ final class ThreadMediaCache {
             existing.hasImage = info.hasImage
             existing.previewImageURL = url
             existing.hasAttachment = info.hasAttachment
+            existing.previewText = info.previewText ?? existing.previewText
             existing.detectedAt = .now
         } else {
             context.insert(ThreadMediaCache(
                 tid: info.tid,
                 hasImage: info.hasImage,
                 previewImageURL: url,
-                hasAttachment: info.hasAttachment
+                hasAttachment: info.hasAttachment,
+                previewText: info.previewText
             ))
         }
         try? context.save()

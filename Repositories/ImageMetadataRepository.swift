@@ -43,11 +43,13 @@ final class ImageMetadataRepository {
             let html = try await client.sendText(req)
             let urls = ThreadImageParser.parseContentImageURLs(from: html)
             let hasAttachment = ThreadImageParser.detectHasAttachment(from: html)
+            let previewText = ThreadImageParser.parsePreviewText(from: html)
             let info = ThreadMediaInfo(
                 tid: tid,
                 hasImage: !urls.isEmpty,
                 previewImageURL: urls.first,
-                hasAttachment: hasAttachment
+                hasAttachment: hasAttachment,
+                previewText: previewText
             )
             return .success(info)
         } catch let e as NetworkError {

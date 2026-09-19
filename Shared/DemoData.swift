@@ -64,8 +64,8 @@ enum DemoData {
     /// 为首页 / 板块列表 / 列表媒体标识注入离线样例数据。
     @MainActor
     static func seed(context: ModelContext) {
-        // 常用板块（首页「常用板块」）
-        for f in [("技术交流", 14), ("模型下载", 20), ("心得技巧", 7)] {
+        // 常用板块（首页板块切换条）：与真实 fid 一致（Discovery=2 / Buy&Sell=6 / Geek Talks=7）
+        for f in [("Discovery", 2), ("Buy & Sell 交易服务区", 6), ("Geek Talks 奇客怪谈", 7)] {
             PinnedForum.pin(fid: f.1, name: f.0, context: context)
         }
         // 最近浏览（首页「最近浏览」）
