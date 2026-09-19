@@ -49,98 +49,130 @@ struct ThreadDetailView: View {
     }
 
     var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                switch viewModel.state {
-                case .idle, .loading:
-                    ProgressView("加载帖子…")
-                        .frame(maxWidth: .infinity, alignment: .center)
-                        .padding(.top, 60)
-                        .foregroundStyle(Color.appTextSecondary(scheme))
-                case .failed(let message, let detail):
-                    ErrorRow(message: message, debugDetail: detail, retry: {
-                        Task { await viewModel.load(page: 1) }
-                    })
-                case .loaded(let pageData):
-                    // 帖子详情首屏数据量有限，使用 VStack 确保首帖一加载即存在，
-                    // 避免 LazyVStack 延迟创建视图导致 scrollTo 首帖失效/截图卡在长帖中间。
-                    VStack(spacing: 0) {
-                        ForEach(Array(pageData.posts.enumerated()), id: \.element.id) { index, post in
-                            if onlyAuthorUID == nil || post.authorID == onlyAuthorUID {
-                                PostDetailRow(
-                                    post: post,
-                                    isOP: index == 0,
-                                    onlyAuthorUID: $onlyAuthorUID,
-                                    onUser: { uid in selectedUser = uid; showUserCard = true },
-                                    onReply: {
-                                        withAnimation(nil) { proxy.scrollTo("lastReply", anchor: .bottom) }
-                                        showReply = true
-                                    },
-                                    onQuote: { p in
-                                        replyInitial = "引用 \(p.authorName)：\n" + quotePreview(p.htmlContent)
-                                        showReply = true
-                                    },
-                                    onImageTap: { url in presentedImage = FullScreenImage(url: url) }
-                                )
-                                .id(index == 0 ? "firstPost" : "post-\(post.id)")
-                                .background(Color.appBackground(scheme))
-                                Divider().background(Color.appDivider(scheme))
-                            }
-                        }
-                        Color.clear.id("lastReply")
+        // Demo/截图模式：不用 ScrollView，避免 UIKit UITextView 内容高度变化导致
+        // SwiftUI ScrollView 滚动位置漂移，保证截图首帖（头像/作者/眼睛/操作栏）
+        // 一定可见。正式 App 仍走原有 ScrollView 会话流。
+        if DemoMode.isOn {
+            detailContent(proxy: nil)
+                .scrollContentBackground(.hidden)
+                .background(Color.appBackground(scheme))
+                .navigationTitle(viewModel.thread.title)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar { replyToolbarItem() }
+                .toolbar(.hidden, for: .tabBar)
+                .task { await viewModel.loadDemo() }
+                .onAppear { recordReadHistory() }
+                .onDisappear { recordLastReadPost() }
+                .fullScreenCover(item: $presentedImage) { item in
+                    ImageViewer(url: item.url)
+                }
+                .sheet(isPresented: $showReply) {
+                    ReplySheet(tid: viewModel.thread.id, initial: replyInitial) { _ in }
+                }
+                .sheet(isPresented: $showUserCard) {
+                    if let uid = selectedUser { UserCardSheet(userID: uid) }
+                }
+        } else {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    detailContent(proxy: proxy)
+                }
+                .defaultScrollAnchor(.top)
+                .scrollContentBackground(.hidden)
+                .background(Color.appBackground(scheme))
+                .navigationTitle(viewModel.thread.title)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar { replyToolbarItem() }
+                .toolbar(.hidden, for: .tabBar)
+                .task { await viewModel.loadFirstPage() }
+                .onAppear { recordReadHistory() }
+                .onDisappear { recordLastReadPost() }
+                .fullScreenCover(item: $presentedImage) { item in
+                    ImageViewer(url: item.url)
+                }
+                .sheet(isPresented: $showReply) {
+                    ReplySheet(tid: viewModel.thread.id, initial: replyInitial) { _ in }
+                }
+                .sheet(isPresented: $showUserCard) {
+                    if let uid = selectedUser { UserCardSheet(userID: uid) }
+                }
+            }
+        }
+    }
+
+    /// 帖子详情内容区。非 Demo 模式下嵌入 ScrollView；Demo 模式下直接作为普通 VStack。
+    @ViewBuilder
+    private func detailContent(proxy: ScrollViewProxy?) -> some View {
+        switch viewModel.state {
+        case .idle, .loading:
+            ProgressView("加载帖子…")
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.top, 60)
+                .foregroundStyle(Color.appTextSecondary(scheme))
+        case .failed(let message, let detail):
+            ErrorRow(message: message, debugDetail: detail, retry: {
+                Task { await viewModel.load(page: 1) }
+            })
+        case .loaded(let pageData):
+            VStack(spacing: 0) {
+                ForEach(Array(pageData.posts.enumerated()), id: \.element.id) { index, post in
+                    if onlyAuthorUID == nil || post.authorID == onlyAuthorUID {
+                        PostDetailRow(
+                            post: post,
+                            isOP: index == 0,
+                            onlyAuthorUID: $onlyAuthorUID,
+                            onUser: { uid in selectedUser = uid; showUserCard = true },
+                            onReply: {
+                                if let proxy {
+                                    withAnimation(nil) { proxy.scrollTo("lastReply", anchor: .bottom) }
+                                }
+                                showReply = true
+                            },
+                            onQuote: { p in
+                                replyInitial = "引用 \(p.authorName)：\n" + quotePreview(p.htmlContent)
+                                showReply = true
+                            },
+                            onImageTap: { url in presentedImage = FullScreenImage(url: url) }
+                        )
+                        .id(index == 0 ? "firstPost" : "post-\(post.id)")
+                        .background(Color.appBackground(scheme))
+                        Divider().background(Color.appDivider(scheme))
                     }
                 }
+                Color.clear.id("lastReply")
             }
-            .defaultScrollAnchor(.top)
-            .scrollContentBackground(.hidden)
-            .background(Color.appBackground(scheme))
-            .navigationTitle(viewModel.thread.title)
-            .navigationBarTitleDisplayMode(.inline)
-            // 回复入口固定放在导航栏右上角（永远可见），供截图脚本稳定触发回复 Sheet；
-            // 帖子详情操作栏内仍保留回复图标（视觉一致）。
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        showReply = true
-                    } label: {
-                        Image(systemName: "square.and.pencil")
-                    }
-                    .accessibilityIdentifier("detail-reply")
-                }
+        }
+    }
+
+    /// 导航栏右上角回复按钮（Demo 与正式模式共用）。
+    private func replyToolbarItem() -> some ToolbarContent {
+        ToolbarItem(placement: .topBarTrailing) {
+            Button {
+                showReply = true
+            } label: {
+                Image(systemName: "square.and.pencil")
             }
-            .toolbar(.hidden, for: .tabBar)
-            .task {
-                if DemoMode.isOn {
-                    await viewModel.loadDemo()
-                } else {
-                    await viewModel.loadFirstPage()
-                }
-            }
-            .onAppear {
-                ReadHistory.record(tid: viewModel.thread.id,
-                                   title: viewModel.thread.title,
-                                   forumID: forumID,
-                                   context: modelContext)
-            }
-            .onDisappear {
-                if case .loaded(let page) = viewModel.state,
-                   let lastPost = page.posts.last {
-                    ReadHistory.record(tid: viewModel.thread.id,
-                                       title: viewModel.thread.title,
-                                       forumID: forumID,
-                                       lastReadPostID: lastPost.id,
-                                       context: modelContext)
-                }
-            }
-            .fullScreenCover(item: $presentedImage) { item in
-                ImageViewer(url: item.url)
-            }
-            .sheet(isPresented: $showReply) {
-                ReplySheet(tid: viewModel.thread.id, initial: replyInitial) { _ in }
-            }
-            .sheet(isPresented: $showUserCard) {
-                if let uid = selectedUser { UserCardSheet(userID: uid) }
-            }
+            .accessibilityIdentifier("detail-reply")
+        }
+    }
+
+    /// 记录进入详情页的浏览历史。
+    private func recordReadHistory() {
+        ReadHistory.record(tid: viewModel.thread.id,
+                           title: viewModel.thread.title,
+                           forumID: forumID,
+                           context: modelContext)
+    }
+
+    /// 记录离开详情页时读到的最后一条回复。
+    private func recordLastReadPost() {
+        if case .loaded(let page) = viewModel.state,
+           let lastPost = page.posts.last {
+            ReadHistory.record(tid: viewModel.thread.id,
+                               title: viewModel.thread.title,
+                               forumID: forumID,
+                               lastReadPostID: lastPost.id,
+                               context: modelContext)
         }
     }
 
