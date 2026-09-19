@@ -10,6 +10,11 @@ final class ThreadDetailViewModel: ObservableObject {
     init(thread: ForumThread, repository: ForumRepositoryProtocol = ForumRepository()) {
         self.thread = thread
         self.repository = repository
+        // 演示模式：初始化即同步就绪，跳过 idle→loaded 的内容高度跳变，
+        // 避免 SwiftUI ScrollView 在内容骤然变长后初始 offset 漂移到长帖中部。
+        if DemoMode.isOn, let pageData = DemoData.loadViewthreadFixture() {
+            state = .loaded(pageData)
+        }
     }
 
     func loadFirstPage() async {

@@ -1,6 +1,5 @@
 import SwiftUI
 import SwiftData
-import UIKit
 
 /// 帖子详情（真实数据：viewthread.php?tid=xx）。
 ///
@@ -13,9 +12,6 @@ import UIKit
 struct ThreadDetailView: View {
     @StateObject private var viewModel: ThreadDetailViewModel
     @StateObject private var replyViewModel: ReplyViewModel
-    /// 捕获帖子详情外层 `UIScrollView`，用于强制 `contentOffset.y = 0` 回顶。
-    /// 见 `ScrollCaptureView.swift`。
-    @StateObject private var scrollHolder = ScrollHolder()
     @Environment(\.modelContext) private var modelContext
     @Environment(\.colorScheme) private var scheme
     @Query private var blockedUsers: [BlockedUser]
@@ -55,17 +51,6 @@ struct ThreadDetailView: View {
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                // 1x1 透明视图：向上遍历 superview 链捕获外层 UIScrollView，
-                // 用于直接设置 contentOffset.y = 0 强制回顶（比 ScrollViewReader.scrollTo 可靠）。
-                ScrollCaptureRepresentable { sv in
-                    scrollHolder.scrollView = sv
-                }
-                .frame(width: 1, height: 1)
-                .opacity(0)
-
-                // 顶部稳定锚点：即使首帖尚未完成异步渲染，也能给 ScrollViewReader 一个可靠目标。
-                Color.clear.id("detailTop").frame(height: 1)
-
                 switch viewModel.state {
                 case .idle, .loading:
                     ProgressView("加载帖子…")
@@ -106,6 +91,7 @@ struct ThreadDetailView: View {
                     }
                 }
             }
+            .defaultScrollAnchor(.top)
             .scrollContentBackground(.hidden)
             .background(Color.appBackground(scheme))
             .navigationTitle(viewModel.thread.title)
@@ -123,32 +109,18 @@ struct ThreadDetailView: View {
                 }
             }
             .toolbar(.hidden, for: .tabBar)
-            .onChange(of: viewModel.state) { newState in
-                // 数据加载完成后，多次强制滚回首帖顶部。
-                if case .loaded = newState {
-                    scheduleScrollToTop()
-                }
-            }
             .task {
                 if DemoMode.isOn {
                     await viewModel.loadDemo()
                 } else {
                     await viewModel.loadFirstPage()
                 }
-                scheduleScrollToTop()
             }
             .onAppear {
                 ReadHistory.record(tid: viewModel.thread.id,
                                    title: viewModel.thread.title,
                                    forumID: forumID,
                                    context: modelContext)
-                if jumpToLast {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        guard let sv = scrollHolder.scrollView else { return }
-                        let targetY = max(0, sv.contentSize.height - sv.bounds.height)
-                        sv.setContentOffset(CGPoint(x: 0, y: targetY), animated: false)
-                    }
-                }
             }
             .onDisappear {
                 if case .loaded(let page) = viewModel.state,
@@ -168,17 +140,6 @@ struct ThreadDetailView: View {
             }
             .sheet(isPresented: $showUserCard) {
                 if let uid = selectedUser { UserCardSheet(userID: uid) }
-            }
-        }
-    }
-
-    /// 多次强制把外层 UIScrollView 置顶。
-    /// 覆盖 HTML 渲染 / UITextView intrinsic size / 图片加载 导致 contentSize 增长的完整时间窗。
-    private func scheduleScrollToTop() {
-        guard !jumpToLast else { return }
-        for delay in [0.05, 0.1, 0.2, 0.3, 0.5, 0.8, 1.0, 1.3, 1.8, 2.5, 3.5, 4.5, 6.0, 8.0, 10.0] {
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                scrollHolder.scrollView?.setContentOffset(CGPoint(x: 0, y: 0), animated: false)
             }
         }
     }

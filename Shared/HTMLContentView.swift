@@ -46,9 +46,9 @@ struct HTMLContentView: View {
             }
         }
         .task(id: html) {
-            if DemoMode.isOn && syncWhenDemo {
-                // 演示模式下关键视图同步渲染：避免 HTML 高度异步突变，
-                // 让 ScrollView 内容尺寸在首次布局即确定，帖子详情回顶/截图稳定。
+            if DemoMode.isOn {
+                // 演示模式：所有正文同步渲染，使 ScrollView 内容尺寸在首次布局即完全确定，
+                // 配合 ThreadDetailView 的 .defaultScrollAnchor(.top)，帖子详情进入时首帖稳定置顶。
                 attributed = Self.renderSync(html: html, fontSize: fontSize, lineFactor: lineFactor, scheme: scheme)
             } else {
                 attributed = await Self.render(html: html, fontSize: fontSize, lineFactor: lineFactor, scheme: scheme)
