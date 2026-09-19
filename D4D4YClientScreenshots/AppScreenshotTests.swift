@@ -21,25 +21,38 @@ final class AppScreenshotTests: XCTestCase {
         let settle: TimeInterval
     }
 
-    /// 全部模块界面清单（顺序即产图顺序）。新增界面只需在此追加一行。
+    /// 待验收界面清单（已确认的界面不再重复截图，节省 CI 时间）。
+    /// 新增/修改界面时只需在此增删一行；回归全量时把下方 `confirmedTargets` 合并进来即可。
     private let targets = [
-        Target(screen: "home",        waitElement: "home-post-open", settle: 1.0),
         Target(screen: "thread",      waitElement: "detail-reply",   settle: 2.0),
         // 回复楼层：启动后自动滚到页尾，展示 50 楼回复流 + 分页条。
         Target(screen: "threadReplies", waitElement: "detail-page-prev", settle: 2.5),
         Target(screen: "reply",       waitElement: "取消",            settle: 1.5),
         Target(screen: "userCard",    waitElement: "加好友",           settle: 1.5),
+        Target(screen: "newPost",     waitElement: "发布",            settle: 1.0),
+        Target(screen: "chat",        waitElement: "发送",            settle: 1.0),
+    ]
+
+    /// 已验收通过的界面（默认不跑）。需要全量回归时，把这组拼到 `targets` 后面即可。
+    private let confirmedTargets = [
+        Target(screen: "home",        waitElement: "home-post-open", settle: 1.0),
         Target(screen: "imageViewer", waitElement: "",               settle: 2.0),
         Target(screen: "search",      waitElement: "home-post-open", settle: 1.0),
-        Target(screen: "newPost",     waitElement: "发布",            settle: 1.0),
         Target(screen: "boardManage", waitElement: "添加",            settle: 1.0),
-        Target(screen: "chat",        waitElement: "发送",            settle: 1.0),
         Target(screen: "message",     waitElement: "消息",            settle: 1.0),
         Target(screen: "profile",     waitElement: "主题外观",         settle: 1.0),
         Target(screen: "settings",    waitElement: "主题外观",         settle: 1.0),
         Target(screen: "security",    waitElement: "退出登录",         settle: 1.0),
         Target(screen: "login",       waitElement: "登录",            settle: 1.0),
     ]
+
+    /// 本次实际跑的界面。默认只跑待验收的 `targets`；
+    /// Codemagic 里把环境变量 `SCREENSHOT_FULL=1` 打开即可全量回归（含已验收界面），无需改代码。
+    private var activeTargets: [Target] {
+        ProcessInfo.processInfo.environment["SCREENSHOT_FULL"] == "1"
+            ? targets + confirmedTargets
+            : targets
+    }
 
     override func setUpWithError() throws {
         // 尽量多截几张：单个界面缺失不阻断其余截图。
@@ -50,7 +63,7 @@ final class AppScreenshotTests: XCTestCase {
     func testDarkScreenshots() { runScreenshots(dark: true) }
 
     private func runScreenshots(dark: Bool) {
-        for target in targets {
+        for target in activeTargets {
             let app = XCUIApplication()
             app.launchArguments = ["-DemoMode", "-DemoScreen=\(target.screen)"]
             if dark { app.launchArguments.append("-DarkMode") }
