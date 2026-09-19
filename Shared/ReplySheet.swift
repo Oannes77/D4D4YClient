@@ -28,10 +28,28 @@ struct ReplySheet: View {
                     .foregroundStyle(Color.appPrimary(scheme))
             }
 
-            TextField("写回复…", text: $text, axis: .vertical)
-                .textFieldStyle(.roundedBorder)
-                .frame(minHeight: 80, alignment: .topLeading)
-                .foregroundStyle(Color.appTextPrimary(scheme))
+            // 多行大输入框：默认 6 行高度，内容超出时自动长高（最多 12 行），
+            // 让用户直观看到自己输入的回复内容。
+            ZStack(alignment: .topLeading) {
+                if text.isEmpty {
+                    Text("写回复…")
+                        .foregroundStyle(Color.appTextTertiary(scheme))
+                        .padding(.top, 8)
+                        .padding(.leading, 6)
+                }
+                TextEditor(text: $text)
+                    .frame(minHeight: 140, maxHeight: 280, alignment: .topLeading)
+                    .scrollContentBackground(.hidden)
+                    .foregroundStyle(Color.appTextPrimary(scheme))
+            }
+            .frame(minHeight: 140, maxHeight: 280, alignment: .topLeading)
+            .padding(4)
+            .background(Color.appSurface(scheme))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(Color.appDivider(scheme), lineWidth: 1)
+            )
+            .cornerRadius(10)
 
             Button {
                 onSubmit(text)
@@ -47,7 +65,7 @@ struct ReplySheet: View {
             }
         }
         .padding(16)
-        .presentationDetents([.fraction(0.45), .large])
+        .presentationDetents([.fraction(0.6), .large])
         .presentationDragIndicator(.visible)
     }
 }

@@ -146,6 +146,48 @@ struct ThreadDetailView: View {
                 }
                 Color.clear.id("lastReply")
             }
+
+            // 分页条：Discuz 每页 50 楼，页尾提供上一页 / 下一页。
+            pageFooter(pageData.pageInfo)
+        }
+    }
+
+    /// 详情页尾部分页条：第 X / N 页 + 上一页 / 下一页。
+    /// Demo 模式只展示页码（离线夹具无真实翻页数据），按钮置灰。
+    @ViewBuilder
+    private func pageFooter(_ info: PageInfo) -> some View {
+        HStack {
+            Button {
+                Task { await viewModel.goToPreviousPage() }
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.subheadline)
+            }
+            .disabled(DemoMode.isOn || info.previousPageURL == nil)
+            .accessibilityIdentifier("detail-page-prev")
+
+            Spacer()
+
+            Text("第 \(info.currentPage) / \(info.totalPages) 页 · 每页 50 楼")
+                .font(.footnote)
+                .foregroundStyle(Color.appTextSecondary(scheme))
+
+            Spacer()
+
+            Button {
+                Task { await viewModel.goToNextPage() }
+            } label: {
+                Image(systemName: "chevron.right")
+                    .font(.subheadline)
+            }
+            .disabled(DemoMode.isOn || info.nextPageURL == nil)
+            .accessibilityIdentifier("detail-page-next")
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .background(Color.appBackground(scheme))
+        .overlay(alignment: .top) {
+            Divider().background(Color.appDivider(scheme))
         }
     }
 

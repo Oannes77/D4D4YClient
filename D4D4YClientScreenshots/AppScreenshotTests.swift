@@ -16,18 +16,21 @@ final class AppScreenshotTests: XCTestCase {
         let name: String
         /// 进入该界面后额外等待布局 / 数据稳定的秒数。
         let settle: TimeInterval
+        /// 截图前必须等待出现的关键元素（按钮 identifier 或文案）。
+        /// 固定 sleep 会撞上 App 启动过渡（偶发整屏纯黑截图），等元素出现可根治。
+        let waitElement: String
     }
 
     /// 顺序即导航顺序：首页 →（点帖子）帖子详情 →（点回复）回复框；消息 / 我的 直接切 Tab。
     private let targets = [
-        Target(name: "首页", settle: 1.5),
+        Target(name: "首页", settle: 1.0, waitElement: "home-post-open"),
         // 8s：覆盖首帖 HTMLContentView 同步渲染 + UITextView intrinsic size layout pass + 多次回顶。
-        Target(name: "帖子详情", settle: 8.0),
-        Target(name: "回复框", settle: 2.0),
-        Target(name: "消息", settle: 1.5),
-        Target(name: "我的", settle: 1.5),
+        Target(name: "帖子详情", settle: 6.0, waitElement: "detail-reply"),
+        Target(name: "回复框", settle: 1.5, waitElement: "取消"),
+        Target(name: "消息", settle: 1.0, waitElement: "消息"),
+        Target(name: "我的", settle: 1.0, waitElement: "主题外观"),
         // 登录页：需 -DemoLogin 启动参数直接渲染（不进 Tab），单独验收登录模块视觉。
-        Target(name: "登录", settle: 1.5),
+        Target(name: "登录", settle: 1.0, waitElement: "登录"),
     ]
 
     override func setUpWithError() throws {
@@ -55,6 +58,14 @@ final class AppScreenshotTests: XCTestCase {
                 XCTFail("截图前 App 已不在前台: \(target.name)")
                 continue
             }
+
+            // 等关键元素出现，确认界面真正渲染完成（防启动过渡期截到整屏纯黑）。
+            let anchor = app.buttons[target.waitElement].firstMatch
+            let anchorExists = anchor.waitForExistence(timeout: 15)
+            if !anchorExists {
+                print("[Screenshots] 警告: \(target.name) 等待元素 \(target.waitElement) 超时，仍按 settle 截图")
+            }
+            Thread.sleep(forTimeInterval: target.settle)
 
             let screenshot = app.screenshot()
             // Xcode 16 的 XCUIScreenshot.pngRepresentation 返回非可选 Data，直接取值。
