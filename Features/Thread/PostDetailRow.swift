@@ -63,7 +63,7 @@ struct PostDetailRow: View {
             }
 
             // 正文
-            PostContent(post: post, isBlocked: false, onImageTap: onImageTap)
+            PostContent(post: post, isBlocked: false, onImageTap: onImageTap, syncWhenDemo: isOP)
 
             // 操作栏
             HStack(spacing: 28) {

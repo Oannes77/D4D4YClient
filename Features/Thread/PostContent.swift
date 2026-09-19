@@ -17,8 +17,17 @@ struct PostContent: View {
     let isBlocked: Bool
     /// 点击图片缩略图时的回调，参数为解析后的绝对图片 URL。
     let onImageTap: (URL) -> Void
+    /// 演示模式下是否同步渲染 HTML 正文。默认 false，仅首帖等关键视图传 true。
+    let syncWhenDemo: Bool
 
     @Environment(\.colorScheme) private var scheme
+
+    init(post: Post, isBlocked: Bool, onImageTap: @escaping (URL) -> Void, syncWhenDemo: Bool = false) {
+        self.post = post
+        self.isBlocked = isBlocked
+        self.onImageTap = onImageTap
+        self.syncWhenDemo = syncWhenDemo
+    }
 
     var body: some View {
         if isBlocked {
@@ -41,7 +50,7 @@ struct PostContent: View {
             .padding(.vertical, 8)
         } else {
             VStack(alignment: .leading, spacing: 8) {
-                HTMLContentView(html: Self.stripImages(post.htmlContent))
+                HTMLContentView(html: Self.stripImages(post.htmlContent), syncWhenDemo: syncWhenDemo)
 
                 if !images.isEmpty {
                     imagesGrid

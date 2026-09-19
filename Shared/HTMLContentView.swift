@@ -13,6 +13,8 @@ import SwiftData
 /// SwiftUI 层不接触 HTML selector —— 本组件只接收 Parser 已提取好的 htmlContent。
 struct HTMLContentView: View {
     let html: String
+    /// 演示模式下是否同步渲染。仅用于首帖等关键视图，避免大量同步渲染导致主线程卡顿。
+    let syncWhenDemo: Bool
 
     @Environment(\.colorScheme) private var scheme
     @Query private var settings: [LocalSettings]
@@ -28,6 +30,11 @@ struct HTMLContentView: View {
         CGFloat(settings.first?.lineSpacing ?? 1.5)
     }
 
+    init(html: String, syncWhenDemo: Bool = false) {
+        self.html = html
+        self.syncWhenDemo = syncWhenDemo
+    }
+
     var body: some View {
         Group {
             if let attributed {
@@ -39,12 +46,25 @@ struct HTMLContentView: View {
             }
         }
         .task(id: html) {
-            attributed = await Self.render(html: html, fontSize: fontSize, lineFactor: lineFactor, scheme: scheme)
+            if DemoMode.isOn && syncWhenDemo {
+                // 演示模式下关键视图同步渲染：避免 HTML 高度异步突变，
+                // 让 ScrollView 内容尺寸在首次布局即确定，帖子详情回顶/截图稳定。
+                attributed = Self.renderSync(html: html, fontSize: fontSize, lineFactor: lineFactor, scheme: scheme)
+            } else {
+                attributed = await Self.render(html: html, fontSize: fontSize, lineFactor: lineFactor, scheme: scheme)
+            }
         }
     }
 
     /// UIKit 的 HTML 导入较慢，放在后台线程执行。
     private static func render(html: String, fontSize: CGFloat, lineFactor: CGFloat, scheme: ColorScheme) async -> NSAttributedString? {
+        await Task.detached(priority: .userInitiated) {
+            Self.renderSync(html: html, fontSize: fontSize, lineFactor: lineFactor, scheme: scheme)
+        }.value
+    }
+
+    /// 同步渲染：用于 Demo 模式或数据量可控的场景。
+    private static func renderSync(html: String, fontSize: CGFloat, lineFactor: CGFloat, scheme: ColorScheme) -> NSAttributedString? {
         // 与 AppTheme 真值对齐的文字 / 链接色（Light / Dark 自动切换）。
         let textHex: UInt32 = scheme == .dark ? 0xFFFFFF : 0x1C1C1E
         let linkHex: UInt32 = scheme == .dark ? 0xB69AE8 : 0x9B8BD4
@@ -61,44 +81,42 @@ struct HTMLContentView: View {
         """
         let wrapped = "<html><head>\(css)</head><body>\(html)</body></html>"
 
-        return await Task.detached(priority: .userInitiated) {
-            guard let data = wrapped.data(using: .utf8) else { return nil }
-            guard let base = try? NSAttributedString(
-                data: data,
-                options: [
-                    .documentType: NSAttributedString.DocumentType.html,
-                    .characterEncoding: String.Encoding.utf8.rawValue,
-                ],
-                documentAttributes: nil
-            ) else { return nil }
+        guard let data = wrapped.data(using: .utf8) else { return nil }
+        guard let base = try? NSAttributedString(
+            data: data,
+            options: [
+                .documentType: NSAttributedString.DocumentType.html,
+                .characterEncoding: String.Encoding.utf8.rawValue,
+            ],
+            documentAttributes: nil
+        ) else { return nil }
 
-            let mutable = NSMutableAttributedString(attributedString: base)
-            let full = NSRange(location: 0, length: mutable.length)
-            let extraLine = fontSize * (lineFactor - 1.0)   // 由系数换算为绝对行间距
+        let mutable = NSMutableAttributedString(attributedString: base)
+        let full = NSRange(location: 0, length: mutable.length)
+        let extraLine = fontSize * (lineFactor - 1.0)   // 由系数换算为绝对行间距
 
-            mutable.enumerateAttributes(in: full) { attrs, range, _ in
-                // 前景色：链接保留品牌紫，其余统一为主题文字色（覆盖行内 color）。
-                if attrs[.link] != nil {
-                    mutable.addAttribute(.foregroundColor, value: linkUIColor, range: range)
-                } else {
-                    mutable.addAttribute(.foregroundColor, value: textUIColor, range: range)
-                }
-                // 行距：保留已有段落样式并叠加换算后的行间距。
-                let para = (attrs[.paragraphStyle] as? NSParagraphStyle)?.mutableCopy() as? NSMutableParagraphStyle
-                    ?? NSMutableParagraphStyle()
-                para.lineSpacing = extraLine
-                para.paragraphSpacing = extraLine * 0.5
-                mutable.addAttribute(.paragraphStyle, value: para, range: range)
-                // 字号：统一基准字号，但保留 HTML 的加粗 emphasis。
-                let isBold = (attrs[.font] as? UIFont)?
-                    .fontDescriptor.symbolicTraits.contains(.traitBold) ?? false
-                let font: UIFont = isBold
-                    ? UIFont.boldSystemFont(ofSize: fontSize)
-                    : UIFont.systemFont(ofSize: fontSize)
-                mutable.addAttribute(.font, value: font, range: range)
+        mutable.enumerateAttributes(in: full) { attrs, range, _ in
+            // 前景色：链接保留品牌紫，其余统一为主题文字色（覆盖行内 color）。
+            if attrs[.link] != nil {
+                mutable.addAttribute(.foregroundColor, value: linkUIColor, range: range)
+            } else {
+                mutable.addAttribute(.foregroundColor, value: textUIColor, range: range)
             }
-            return mutable
-        }.value
+            // 行距：保留已有段落样式并叠加换算后的行间距。
+            let para = (attrs[.paragraphStyle] as? NSParagraphStyle)?.mutableCopy() as? NSMutableParagraphStyle
+                ?? NSMutableParagraphStyle()
+            para.lineSpacing = extraLine
+            para.paragraphSpacing = extraLine * 0.5
+            mutable.addAttribute(.paragraphStyle, value: para, range: range)
+            // 字号：统一基准字号，但保留 HTML 的加粗 emphasis。
+            let isBold = (attrs[.font] as? UIFont)?
+                .fontDescriptor.symbolicTraits.contains(.traitBold) ?? false
+            let font: UIFont = isBold
+                ? UIFont.boldSystemFont(ofSize: fontSize)
+                : UIFont.systemFont(ofSize: fontSize)
+            mutable.addAttribute(.font, value: font, range: range)
+        }
+        return mutable
     }
 }
 
