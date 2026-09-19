@@ -117,7 +117,10 @@ struct ThreadDetailView: View {
                 // 单次 scrollTo 容易错过渲染完成点；这里覆盖从 0.3s 到 4.5s 的时间窗，
                 // 只要首帖视图已存在就持续把它置顶，避免截图卡在长帖中间。
                 if !jumpToLast, case .loaded = newState {
-                    for delay in [0.3, 0.8, 1.3, 1.8, 2.5, 3.5, 4.5] {
+                    // 密集 + 长周期回顶：首帖 HTMLContentView 同步渲染后，
+                    // UITextView 的 intrinsic size 仍需若干 layout pass 才稳定；
+                    // 覆盖到 8.0s，确保截图前内容高度不再增长、首帖始终置顶。
+                    for delay in [0.05, 0.1, 0.2, 0.3, 0.5, 0.8, 1.0, 1.3, 1.8, 2.5, 3.5, 4.5, 6.0, 8.0] {
                         DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
                             withAnimation(nil) { proxy.scrollTo("firstPost", anchor: .top) }
                         }

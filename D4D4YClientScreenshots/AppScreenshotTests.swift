@@ -21,7 +21,8 @@ final class AppScreenshotTests: XCTestCase {
     /// 顺序即导航顺序：首页 →（点帖子）帖子详情 →（点回复）回复框；消息 / 我的 直接切 Tab。
     private let targets = [
         Target(name: "首页", settle: 1.5),
-        Target(name: "帖子详情", settle: 4.0),
+        // 8s：覆盖首帖 HTMLContentView 同步渲染 + UITextView intrinsic size layout pass + 多次回顶。
+        Target(name: "帖子详情", settle: 8.0),
         Target(name: "回复框", settle: 2.0),
         Target(name: "消息", settle: 1.5),
         Target(name: "我的", settle: 1.5),
@@ -97,8 +98,8 @@ final class AppScreenshotTests: XCTestCase {
                 return
             }
             post.tap()
-            // 等详情 push 动画 + HTMLContentView 异步渲染 + 首帖回顶。
-            _ = app.wait(for: .unknown, timeout: 4.0)
+            // 等详情 push 动画 + HTMLContentView 同步渲染 + UITextView 尺寸稳定 + 首帖回顶。
+            _ = app.wait(for: .unknown, timeout: 8.0)
 
         case "回复框":
             let homeTab = tabBar.buttons.element(boundBy: 0)
@@ -109,7 +110,7 @@ final class AppScreenshotTests: XCTestCase {
                 return
             }
             post.tap()
-            _ = app.wait(for: .unknown, timeout: 4.0)
+            _ = app.wait(for: .unknown, timeout: 8.0)
             let reply = app.buttons["detail-reply"].firstMatch
             guard reply.waitForExistence(timeout: 10) else {
                 XCTFail("回复按钮不可点（detail-reply 缺失）")
