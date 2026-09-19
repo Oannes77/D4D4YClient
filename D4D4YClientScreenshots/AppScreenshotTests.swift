@@ -26,6 +26,8 @@ final class AppScreenshotTests: XCTestCase {
         Target(name: "回复框", settle: 2.0),
         Target(name: "消息", settle: 1.5),
         Target(name: "我的", settle: 1.5),
+        // 登录页：需 -DemoLogin 启动参数直接渲染（不进 Tab），单独验收登录模块视觉。
+        Target(name: "登录", settle: 1.5),
     ]
 
     override func setUpWithError() throws {
@@ -41,6 +43,8 @@ final class AppScreenshotTests: XCTestCase {
             let app = XCUIApplication()
             app.launchArguments = ["-DemoMode"]
             if dark { app.launchArguments.append("-DarkMode") }
+            // 登录页不走 Tab 导航，靠该参数让 App 直接渲染登录门禁页。
+            if target.name == "登录" { app.launchArguments.append("-DemoLogin") }
 
             if app.state == .runningForeground { app.terminate() }
             app.launch()
@@ -88,6 +92,10 @@ final class AppScreenshotTests: XCTestCase {
                 return
             }
             tab.tap()
+
+        case "登录":
+            // -DemoLogin 启动即渲染登录页，无需额外导航。
+            break
 
         case "帖子详情":
             let homeTab = tabBar.buttons.element(boundBy: 0)

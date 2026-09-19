@@ -148,6 +148,14 @@ final class HTTPClient {
         guard let text = HTMLDecoder.decode(data) else {
             throw NetworkError.textEncodingFailed(request.url)
         }
+
+        // 统一掉线检测：任意页面出现「您还未登录」即说明服务端不再认可当前 Cookie。
+        // 此处只发通知、不直接改状态；由 SessionManager 判定是否真需要作废会话
+        // （登录流程本身也会命中该文案，但当时并非已登录态，会被安全忽略）。
+        if text.contains("您还未登录") {
+            NotificationCenter.default.post(name: .d4d4ySessionExpired, object: nil)
+        }
+
         return text
     }
 

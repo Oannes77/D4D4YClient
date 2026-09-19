@@ -1,6 +1,11 @@
 import Foundation
 import Combine
 
+/// 会话过期通知：任意响应命中「您还未登录」时由 `HTTPClient` 统一发出。
+extension Notification.Name {
+    static let d4d4ySessionExpired = Notification.Name("D4D4Y.SessionExpired")
+}
+
 /// 会话管理器：编排登录 / 登出 / 启动恢复，对外发布 `state` 供 UI 订阅。
 ///
 /// 安全约束（与 Sprint 6 要求一致）：
@@ -10,12 +15,25 @@ import Combine
 @MainActor
 final class SessionManager: ObservableObject {
     @Published private(set) var state: AuthenticationState = .guest
+    /// 登录页表单快照（含安全提问选项）。未取到时为 nil，UI 走标准兜底列表。
+    @Published private(set) var loginForm: LoginForm?
+    /// 正在拉取登录表单（UI 展示 loading）。
+    @Published private(set) var isLoadingLoginForm = false
 
     static let shared = SessionManager()
 
     private let repository = LoginRepository()
 
-    private init() {}
+    private init() {
+        // 统一掉线检测：HTTPClient 识别到「您还未登录」时通知此处理。
+        NotificationCenter.default.addObserver(
+            forName: .d4d4ySessionExpired,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.markExpired() }
+        }
+    }
 
     // MARK: - 演示模式（仅截图用，不触及真实鉴权流程）
 
@@ -42,33 +60,89 @@ final class SessionManager: ObservableObject {
         }
     }
 
+    // MARK: - 登录表单（安全提问选项）
+
+    /// 预取登录页表单，供 UI 展示真实安全提问列表。
+    /// 已取到则直接复用（避免重复 GET 导致 formhash 变化）。
+    func loadLoginForm() async {
+        guard loginForm == nil else { return }
+        isLoadingLoginForm = true
+        defer { isLoadingLoginForm = false }
+        switch await repository.loadLoginForm() {
+        case .success(let form):
+            loginForm = form
+        case .failure(let error):
+            let desc = error.errorDescription ?? "未知错误"
+            Log.network.error("登录表单获取失败: \(desc, privacy: .public)")
+            // 失败不阻塞：UI 回退到标准安全提问列表。
+        }
+    }
+
     // MARK: - 登录
 
     /// 执行登录。整个过程中 `password` 仅作为参数传至 `LoginRepository` 用于计算 MD5，
     /// 本方法**不保存、不打印**密码。
-    func login(username: String, password: String) async {
+    func login(username: String,
+               password: String,
+               questionID: Int = 0,
+               answer: String = "",
+               rememberMe: Bool = true) async {
         guard !username.isEmpty, !password.isEmpty else {
             self.state = .failed(.loginFailed("请输入用户名和密码"))
             return
         }
         self.state = .authenticating
-        let result = await repository.login(username: username, password: password)
+
+        // 表单缺失时先取一次，保证 formhash 与 sid 同源。
+        let form: LoginForm
+        if let cached = loginForm {
+            form = cached
+        } else {
+            switch await repository.loadLoginForm() {
+            case .success(let f):
+                form = f
+                loginForm = f
+            case .failure(let error):
+                clearAuthCookies()
+                self.state = .failed(error)
+                return
+            }
+        }
+
+        let result = await repository.submit(form: form,
+                                             username: username,
+                                             password: password,
+                                             questionID: questionID,
+                                             answer: answer,
+                                             rememberMe: rememberMe)
         switch result {
         case .success(let session):
             self.state = .authenticated(session)
         case .failure(let error):
-            // 失败时清掉可能部分写入的 Cookie，避免脏状态。
+            // 失败时清掉可能部分写入的 Cookie，避免脏状态；
+            // 同时丢弃表单缓存，下次登录重新取 formhash（连续失败会触发验证码）。
             clearAuthCookies()
+            loginForm = nil
             self.state = .failed(error)
         }
     }
 
-    // MARK: - 登出
+    // MARK: - 掉线 / 登出
+
+    /// 运行期掉线：仅在"原本已登录"时生效，避免登录流程中的游客响应误判。
+    func markExpired() {
+        guard state.isAuthenticated else { return }
+        KeychainStore.shared.clear()
+        clearAuthCookies()
+        loginForm = nil
+        self.state = .guest
+    }
 
     /// 退出登录：本地清凭据为权威行为；同时尽力通知服务端作废会话（best-effort，不阻塞）。
     func logout() {
         KeychainStore.shared.clear()
         clearAuthCookies()
+        loginForm = nil
         Task { await bestEffortServerLogout() }
         self.state = .guest
     }
@@ -106,24 +180,11 @@ final class SessionManager: ObservableObject {
         do {
             let client = HTTPClient()
             let page = try await client.sendText(try client.request(path: LoginFlowReference.logoutPath))
-            guard let formhash = extractFormhash(from: page) else { return }
+            guard let formhash = LoginFormParser.hiddenValue(html: page, name: "formhash") else { return }
             let logoutURL = LoginFlowReference.logoutPath + "&formhash=" + formhash
             _ = try? await client.sendText(try client.request(path: logoutURL))
         } catch {
             // 静默：登出以本地清凭据为准
         }
-    }
-
-    private func extractFormhash(from html: String) -> String? {
-        let tagPattern = "<input[^>]*name=[\"']formhash[\"'][^>]*>"
-        guard let tagRegex = try? NSRegularExpression(pattern: tagPattern, options: .caseInsensitive),
-              let tagMatch = tagRegex.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)),
-              let tagRange = Range(tagMatch.range, in: html) else { return nil }
-        let tag = String(html[tagRange])
-        let valPattern = "value=[\"']([^\"']*)[\"']"
-        guard let valRegex = try? NSRegularExpression(pattern: valPattern, options: .caseInsensitive),
-              let valMatch = valRegex.firstMatch(in: tag, range: NSRange(tag.startIndex..., in: tag)),
-              let valRange = Range(valMatch.range(at: 1), in: tag) else { return nil }
-        return String(tag[valRange])
     }
 }

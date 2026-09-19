@@ -14,6 +14,11 @@ struct ProfileView: View {
     @StateObject private var viewModel = ProfileViewModel()
     @Query private var settings: [LocalSettings]
     @State private var showLoginSheet = false
+    @State private var showAccountSecurity = false
+
+    /// 是否已登录（决定「账号与安全」是进账号页还是唤起登录）。
+    /// 演示/截图模式视为已登录，避免出现"点击登录"箭头破坏截图。
+    private var isLoggedIn: Bool { session.state.isAuthenticated || DemoMode.isOn }
 
     /// 演示/真实模式下统一取当前用户名；未登录时显示提示。
     private var username: String {
@@ -28,7 +33,8 @@ struct ProfileView: View {
     }
 
     private var groupText: String {
-        DemoMode.isOn ? "论坛元老 · UID \(uid)" : "UID \(uid)"
+        if !isLoggedIn { return "点击登录 4D4Y 账号" }
+        return DemoMode.isOn ? "论坛元老 · UID \(uid)" : "UID \(uid)"
     }
 
     private var themeText: String {
@@ -58,6 +64,9 @@ struct ProfileView: View {
             .sheet(isPresented: $showLoginSheet) {
                 LoginView()
             }
+            .sheet(isPresented: $showAccountSecurity) {
+                AccountSecurityView()
+            }
             .alert("缓存", isPresented: $viewModel.showClearResult) {
                 Button("好", role: .cancel) {}
             } message: {
@@ -68,25 +77,37 @@ struct ProfileView: View {
 
     // MARK: - 个人信息资料框
     private var profileHeader: some View {
-        HStack(spacing: 16) {
-            AvatarView(authorID: uid, authorName: username, size: 72)
-                .overlay(
-                    Circle()
-                        .stroke(Color.appDivider(scheme), lineWidth: 0.5)
-                )
+        Button {
+            // 未登录时点击资料框即唤起登录。
+            if !isLoggedIn { showLoginSheet = true }
+        } label: {
+            HStack(spacing: 16) {
+                AvatarView(authorID: uid, authorName: username, size: 72)
+                    .overlay(
+                        Circle()
+                            .stroke(Color.appDivider(scheme), lineWidth: 0.5)
+                    )
 
-            VStack(alignment: .leading, spacing: 6) {
-                Text(username)
-                    .font(.title3).fontWeight(.bold)
-                    .foregroundStyle(Color.appTextPrimary(scheme))
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(username)
+                        .font(.title3).fontWeight(.bold)
+                        .foregroundStyle(Color.appTextPrimary(scheme))
 
-                Text(groupText)
-                    .font(.subheadline)
-                    .foregroundStyle(Color.appTextSecondary(scheme))
+                    Text(groupText)
+                        .font(.subheadline)
+                        .foregroundStyle(Color.appTextSecondary(scheme))
+                }
+
+                Spacer()
+
+                if !isLoggedIn {
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundStyle(Color.appTextTertiary(scheme))
+                }
             }
-
-            Spacer()
         }
+        .buttonStyle(.plain)
         .padding(16)
         .background(Color.appSurface(scheme))
         .clipShape(RoundedRectangle(cornerRadius: 16))
@@ -132,7 +153,15 @@ struct ProfileView: View {
             settingRow(icon: "eye", title: "显示帖子正文", value: "开")
             settingRow(icon: "list.bullet.rectangle", title: "版块管理")
             settingRow(icon: "bell.badge", title: "消息推送", value: "15 分钟")
-            settingRow(icon: "lock.shield", title: "账号与安全")
+            settingRow(icon: "lock.shield",
+                       title: "账号与安全",
+                       value: isLoggedIn ? "已登录" : "未登录") {
+                if isLoggedIn {
+                    showAccountSecurity = true
+                } else {
+                    showLoginSheet = true
+                }
+            }
         }
         .background(Color.appSurface(scheme))
         .clipShape(RoundedRectangle(cornerRadius: 16))
@@ -167,8 +196,27 @@ struct ProfileView: View {
     }
 
     // MARK: - 通用设置行
-    @ViewBuilder
-    private func settingRow(icon: String, title: String, value: String? = nil) -> some View {
+    /// 通用设置行。`action` 非空时整行可点击。
+    private func settingRow(icon: String, title: String,
+                            value: String? = nil,
+                            action: (() -> Void)? = nil) -> some View {
+        VStack(spacing: 0) {
+            if let action {
+                Button(action: action) {
+                    settingRowContent(icon: icon, title: title, value: value)
+                }
+                .buttonStyle(.plain)
+            } else {
+                settingRowContent(icon: icon, title: title, value: value)
+            }
+
+            Divider()
+                .padding(.leading, 50)
+                .background(Color.appDivider(scheme))
+        }
+    }
+
+    private func settingRowContent(icon: String, title: String, value: String?) -> some View {
         HStack {
             settingLabel(icon: icon, title: title)
             Spacer()
@@ -183,10 +231,6 @@ struct ProfileView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
-
-        Divider()
-            .padding(.leading, 50)
-            .background(Color.appDivider(scheme))
     }
 
     private func settingLabel(icon: String, title: String) -> some View {
