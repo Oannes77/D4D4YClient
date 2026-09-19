@@ -33,6 +33,18 @@ struct HTMLContentView: View {
     init(html: String, syncWhenDemo: Bool = false) {
         self.html = html
         self.syncWhenDemo = syncWhenDemo
+        // 演示模式下初始化即同步渲染：body 首帧就是最终高度，
+        // 避免「占位 -> 真实高度」的跳变导致 ScrollView 内容漂移。
+        if DemoMode.isOn {
+            let style = UITraitCollection.current.userInterfaceStyle
+            let resolvedScheme: ColorScheme = style == .dark ? .dark : .light
+            _attributed = State(initialValue: Self.renderSync(
+                html: html,
+                fontSize: 17,
+                lineFactor: 1.5,
+                scheme: resolvedScheme
+            ))
+        }
     }
 
     var body: some View {
@@ -46,13 +58,10 @@ struct HTMLContentView: View {
             }
         }
         .task(id: html) {
-            if DemoMode.isOn {
-                // 演示模式：所有正文同步渲染，使 ScrollView 内容尺寸在首次布局即完全确定，
-                // 配合 ThreadDetailView 的 .defaultScrollAnchor(.top)，帖子详情进入时首帖稳定置顶。
-                attributed = Self.renderSync(html: html, fontSize: fontSize, lineFactor: lineFactor, scheme: scheme)
-            } else {
-                attributed = await Self.render(html: html, fontSize: fontSize, lineFactor: lineFactor, scheme: scheme)
-            }
+            // 演示模式下已在 init 同步渲染完毕，避免再次渲染造成高度跳变；
+            // 非演示模式仍走后台异步渲染。
+            guard !DemoMode.isOn else { return }
+            attributed = await Self.render(html: html, fontSize: fontSize, lineFactor: lineFactor, scheme: scheme)
         }
     }
 

@@ -47,12 +47,16 @@ enum DemoData {
     }
 
     /// 解析仓库内 `viewthread_tid193033_page1.html` 得到帖子详情页。
+    /// 演示模式仅保留首帖 + 前 4 条回复：避免 49 条楼层同步渲染阻塞主线程，
+    /// 同时保证截图能看到首帖头部、正文和少量回复楼层流。
     static func loadViewthreadFixture() -> ThreadPage? {
         guard let url = Bundle.main.url(forResource: "viewthread_tid193033_page1", withExtension: "html"),
               let data = try? Data(contentsOf: url) else { return nil }
         let html = String(data: data, encoding: String.Encoding(rawValue: 2147485234))
             ?? String(data: data, encoding: .utf8) ?? ""
-        return try? ThreadDetailParser.parse(html: html)
+        guard let page = try? ThreadDetailParser.parse(html: html) else { return nil }
+        let posts = Array(page.posts.prefix(5))
+        return ThreadPage(title: page.title, typeName: page.typeName, posts: posts, pageInfo: page.pageInfo)
     }
 
     // MARK: - SwiftData 样例种子
