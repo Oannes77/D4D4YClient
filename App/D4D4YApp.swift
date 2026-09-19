@@ -28,7 +28,10 @@ struct D4D4YApp: App {
             if DemoMode.isOn {
                 // 截图模式：用真实组件 + 离线样例数据呈现目标界面。
                 Group {
-                    if ProcessInfo.processInfo.arguments.contains(Self.demoLoginArgument) {
+                    if let screen = ScreenshotRoute.current {
+                        // 一次 CI 跑完所有模块：`-DemoScreen=<name>` 直接渲染该界面。
+                        ScreenshotRouteView(screen: screen)
+                    } else if ProcessInfo.processInfo.arguments.contains(Self.demoLoginArgument) {
                         LoginGateView(onSkip: {})
                     } else {
                         ScreenshotGalleryView()
