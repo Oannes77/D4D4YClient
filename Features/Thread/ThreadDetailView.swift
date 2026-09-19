@@ -54,6 +54,9 @@ struct ThreadDetailView: View {
         // 一定可见。正式 App 仍走原有 ScrollView 会话流。
         if DemoMode.isOn {
             detailContent(proxy: nil)
+                // Demo/截图模式下不用 ScrollView，必须强制内容从顶部开始对齐；
+                // 否则 VStack 默认居中，超长内容会把首帖头部推到屏幕上方外面。
+                .frame(maxHeight: .infinity, alignment: .top)
                 .scrollContentBackground(.hidden)
                 .background(Color.appBackground(scheme))
                 .navigationTitle(viewModel.thread.title)
