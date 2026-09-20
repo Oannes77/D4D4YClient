@@ -143,3 +143,21 @@ extension Color {
         scheme == .dark ? AppTheme.accentGoldDark : AppTheme.accentGoldLight
     }
 }
+
+// MARK: - 统一卡片容器
+extension View {
+    /// 圆角卡片：底色 + 圆角 + 一圈 0.5px 细描边。
+    ///
+    /// **为什么需要描边**：浅色模式下页面底色与卡片底色同为纯白（`#FFFFFF`），
+    /// 卡片边界完全看不出来（暗色下卡片是 `#161616`、背景是纯黑，本来就有对比）。
+    /// 描边用既有的 `appBorder`（浅 `#DDD8E8` / 深 `#333333`），保持「扁平、无阴影」的设计语言。
+    func appCard(_ scheme: ColorScheme, cornerRadius: CGFloat = 16) -> some View {
+        self
+            .background(Color.appSurface(scheme))
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius)
+                    .stroke(Color.appBorder(scheme), lineWidth: 0.5)
+            )
+    }
+}

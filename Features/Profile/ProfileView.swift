@@ -12,6 +12,8 @@ struct ProfileView: View {
     @EnvironmentObject private var session: SessionManager
     @Environment(\.modelContext) private var modelContext
     @StateObject private var viewModel = ProfileViewModel()
+    /// 客户端偏好（占位符 / 是否显示正文 / 后台刷新间隔）：设置框里显示的就是它里面的真实值。
+    @ObservedObject private var prefs = PreferenceStore.shared
     @Query private var settings: [LocalSettings]
     @State private var showLoginSheet = false
     @State private var showAccountSecurity = false
@@ -109,8 +111,7 @@ struct ProfileView: View {
         }
         .buttonStyle(.plain)
         .padding(16)
-        .background(Color.appSurface(scheme))
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .appCard(scheme)
     }
 
     // MARK: - 我的宫格
@@ -135,8 +136,7 @@ struct ProfileView: View {
                 .buttonStyle(.plain)
             }
         }
-        .background(Color.appSurface(scheme))
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .appCard(scheme)
     }
 
     /// 宫格目标页。凡是需要登录才有内容、而客户端还没接的栏目，
@@ -172,16 +172,28 @@ struct ProfileView: View {
     }
 
     // MARK: - 设置框
+    /// 六行设置**全部可点且真的生效**（右侧数值取真实来源，不再是硬编码）：
+    /// 主题外观 → 阅读设置；回帖占位符 → 可编辑（回复/发帖立即用新值）；
+    /// 显示帖子正文 → 开关，直接决定列表是否显示正文预览；
+    /// 版块管理 → 真实排序页；消息推送 → 间隔设置 + 真实后台刷新；账号与安全 → 已接。
     private var settingsCard: some View {
         VStack(spacing: 0) {
-            settingRow(icon: "paintbrush", title: "主题外观", value: themeText)
-            settingRow(icon: "text.bubble", title: "回帖占位符", value: "Peace&Love")
-            settingRow(icon: "eye", title: "显示帖子正文", value: "开")
-            settingRow(icon: "list.bullet.rectangle", title: "版块管理")
-            settingRow(icon: "bell.badge", title: "消息推送", value: "15 分钟")
-            settingRow(icon: "lock.shield",
-                       title: "账号与安全",
-                       value: isLoggedIn ? "已登录" : "未登录") {
+            navRow(icon: "paintbrush", title: "主题外观", value: themeText) {
+                SettingsView()
+            }
+            navRow(icon: "text.bubble", title: "回帖占位符", value: prefs.replyPlaceholder) {
+                ReplyPlaceholderView()
+            }
+            toggleRow(icon: "eye", title: "显示帖子正文", isOn: $prefs.showPostContent)
+            navRow(icon: "list.bullet.rectangle", title: "版块管理", value: nil) {
+                BoardManageView()
+            }
+            navRow(icon: "bell.badge", title: "消息推送", value: prefs.pushLabel) {
+                PushSettingsView()
+            }
+            actionRow(icon: "lock.shield",
+                      title: "账号与安全",
+                      value: isLoggedIn ? "已登录" : "未登录") {
                 if isLoggedIn {
                     showAccountSecurity = true
                 } else {
@@ -189,8 +201,7 @@ struct ProfileView: View {
                 }
             }
         }
-        .background(Color.appSurface(scheme))
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .appCard(scheme)
     }
 
     // MARK: - 关于框
@@ -217,28 +228,57 @@ struct ProfileView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
         }
-        .background(Color.appSurface(scheme))
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .appCard(scheme)
     }
 
     // MARK: - 通用设置行
-    /// 通用设置行。`action` 非空时整行可点击。
-    private func settingRow(icon: String, title: String,
-                            value: String? = nil,
-                            action: (() -> Void)? = nil) -> some View {
+    /// 行外壳：内容 + 左侧缩进的 0.5px 分割线。
+    private func rowShell<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         VStack(spacing: 0) {
-            if let action {
-                Button(action: action) {
-                    settingRowContent(icon: icon, title: title, value: value)
-                }
-                .buttonStyle(.plain)
-            } else {
-                settingRowContent(icon: icon, title: title, value: value)
-            }
-
+            content()
             Divider()
                 .padding(.leading, 50)
                 .background(Color.appDivider(scheme))
+        }
+    }
+
+    /// 可跳转行：点击 push 到目标页面（右侧保留自己的 chevron，不用系统样式）。
+    private func navRow<Destination: View>(icon: String, title: String,
+                                           value: String? = nil,
+                                           @ViewBuilder destination: () -> Destination) -> some View {
+        rowShell {
+            NavigationLink {
+                destination()
+            } label: {
+                settingRowContent(icon: icon, title: title, value: value)
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    /// 开关行：就地切换，不需要进二级页面。
+    private func toggleRow(icon: String, title: String, isOn: Binding<Bool>) -> some View {
+        rowShell {
+            HStack {
+                settingLabel(icon: icon, title: title)
+                Spacer()
+                Toggle("", isOn: isOn)
+                    .labelsHidden()
+                    .tint(Color.appPrimary(scheme))
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+        }
+    }
+
+    /// 动作行：整行可点，行为由调用方决定。
+    private func actionRow(icon: String, title: String, value: String? = nil,
+                           action: @escaping () -> Void) -> some View {
+        rowShell {
+            Button(action: action) {
+                settingRowContent(icon: icon, title: title, value: value)
+            }
+            .buttonStyle(.plain)
         }
     }
 

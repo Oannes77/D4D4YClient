@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 
 /// 搜索结果页（首页顶部搜索栏回车 → 结果列表）。
 ///
@@ -8,8 +9,14 @@ struct SearchResultsView: View {
     let keyword: String
 
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.modelContext) private var modelContext
+    /// 本地收藏（书签）：与首页 / 详情页共用同一份数据。
+    @Query private var savedThreads: [SavedThread]
     @StateObject private var viewModel = SearchViewModel()
     @State private var selectedThread: HomeThreadItem?
+    @State private var selectedUser: Int?
+    @State private var selectedUserName = ""
+    @State private var showUserCard = false
 
     init(keyword: String = "X1C") {
         self.keyword = keyword
@@ -68,6 +75,9 @@ struct SearchResultsView: View {
             guard !DemoMode.isOn else { return }
             await viewModel.search(keyword: keyword)
         }
+        .sheet(isPresented: $showUserCard) {
+            if let uid = selectedUser { UserCardSheet(userID: uid, fallbackName: selectedUserName) }
+        }
     }
 
     private var header: some View {
@@ -91,10 +101,28 @@ struct SearchResultsView: View {
                     item: item,
                     onOpen: { selectedThread = item },
                     onReply: { selectedThread = item },
-                    onUser: { _, _ in }
+                    onUser: { uid, name in
+                        selectedUser = uid
+                        selectedUserName = name
+                        showUserCard = true
+                    },
+                    isSaved: savedIDs.contains(item.id),
+                    threadURL: HTTPClient.absoluteURL(path: "viewthread.php?tid=\(item.id)"),
+                    onToggleSave: { toggleSave(item) }
                 )
                 Divider().background(Color.appDivider(scheme))
             }
         }
+    }
+
+    private var savedIDs: Set<Int> { Set(savedThreads.map(\.tid)) }
+
+    /// 切换本地收藏（只写本机 SwiftData，不伪造服务器收藏成功）。
+    private func toggleSave(_ item: HomeThreadItem) {
+        SavedThread.toggle(tid: item.id,
+                           title: item.title,
+                           boardName: item.boardName.isEmpty ? nil : item.boardName,
+                           authorName: item.authorName,
+                           context: modelContext)
     }
 }

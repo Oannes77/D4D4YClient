@@ -19,6 +19,8 @@ struct D4D4YApp: App {
         } catch {
             fatalError("SwiftData 容器初始化失败: \(error)")
         }
+        // 后台刷新处理器必须在启动完成前登记（是否真的排期由设置里的间隔决定）。
+        BackgroundRefresh.register()
     }
 
     /// 截图用：仅渲染登录页（不进 Tab），便于单独验收登录模块视觉。
@@ -55,6 +57,7 @@ struct D4D4YApp: App {
 /// 登录态由 `SessionManager` 单点发布，运行期掉线会自动回到登录页。
 struct RootView: View {
     @Environment(\.modelContext) private var context
+    @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject private var session: SessionManager
     @Query private var settings: [LocalSettings]
 
@@ -85,6 +88,21 @@ struct RootView: View {
                 ensureDefaultSettings()
                 session.restore()
                 hasRestored = true
+                // 启动时按用户设置的间隔补排一次（上一次的排期可能已随进程结束而失效）。
+                BackgroundRefresh.scheduleNext()
+            }
+            .onChange(of: scenePhase) { _, phase in
+                switch phase {
+                case .background:
+                    // 进入后台时排期下一次后台刷新（设置里是「关闭」则不排）。
+                    BackgroundRefresh.scheduleNext()
+                case .active:
+                    // 回到前台：如果开启了推送间隔，顺手核对一次未读（失败就保持原角标）。
+                    guard PreferenceStore.shared.pushFrequencyMinutes > 0 else { break }
+                    Task { await BackgroundRefresh.refreshUnread() }
+                default:
+                    break
+                }
             }
     }
 

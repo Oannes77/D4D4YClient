@@ -20,6 +20,8 @@ enum ScreenshotScreen: String, CaseIterable {
     case profile             // 我的
     case savedThreads        // 我的收藏（本地书签）
     case blockedUsers        // 黑名单（本地屏蔽）
+    case replyPlaceholder    // 回帖占位符设置（可编辑 + 效果预览）
+    case pushSettings        // 消息推送（后台刷新间隔）
     case settings            // 设置
     case security            // 账号与安全
     case login               // 登录页
@@ -125,6 +127,10 @@ struct ScreenshotRouteView: View {
             NavigationStack { SavedThreadsView() }
         case .blockedUsers:
             NavigationStack { BlockedUsersView() }
+        case .replyPlaceholder:
+            NavigationStack { ReplyPlaceholderView() }
+        case .pushSettings:
+            NavigationStack { PushSettingsView() }
         case .settings:
             NavigationStack { SettingsView() }
         case .security:

@@ -14,6 +14,8 @@ struct HomeView: View {
     @Environment(\.colorScheme) private var scheme
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \PinnedForum.sortOrder) private var pinned: [PinnedForum]
+    /// 本地收藏（书签）：列表行星标状态与详情页共用同一份数据。
+    @Query private var savedThreads: [SavedThread]
     @StateObject private var viewModel = HomeViewModel()
 
     @State private var selectedFid: Int = 2
@@ -142,7 +144,10 @@ struct HomeView: View {
                         selectedUser = uid
                         selectedUserName = name
                         showUserCard = true
-                    }
+                    },
+                    isSaved: savedIDs.contains(item.id),
+                    threadURL: Self.threadURL(for: item.id),
+                    onToggleSave: { toggleSave(item) }
                 )
                 .background(Color.appBackground(scheme))
                 .onAppear {
@@ -207,6 +212,24 @@ struct HomeView: View {
     }
 
     private static let defaultBoards: [BoardChipItem] = ForumBoards.defaults
+
+    // MARK: - 本地收藏与分享
+
+    private var savedIDs: Set<Int> { Set(savedThreads.map(\.tid)) }
+
+    /// 帖子网页地址：由 tid 现算，指向论坛本站（系统分享用）。
+    private static func threadURL(for tid: Int) -> URL? {
+        HTTPClient.absoluteURL(path: "viewthread.php?tid=\(tid)")
+    }
+
+    /// 切换本地收藏（只写本机 SwiftData，不伪造服务器收藏成功）。
+    private func toggleSave(_ item: HomeThreadItem) {
+        SavedThread.toggle(tid: item.id,
+                           title: item.title,
+                           boardName: item.boardName.isEmpty ? nil : item.boardName,
+                           authorName: item.authorName,
+                           context: modelContext)
+    }
 }
 
 // MARK: - 搜索请求（navigationDestination 需要 Identifiable）

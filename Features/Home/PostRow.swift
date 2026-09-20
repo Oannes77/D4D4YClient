@@ -11,8 +11,16 @@ struct PostRow: View {
     var onOpen: () -> Void
     var onReply: () -> Void
     var onUser: (Int, String) -> Void
+    /// 是否已在本机收藏（决定星标空心 / 实心）。
+    var isSaved: Bool = false
+    /// 帖子网页地址（系统分享用）；拿不到时隐藏分享按钮，不摆设空按钮。
+    var threadURL: URL? = nil
+    /// 点星标：切换本地收藏（与详情页同一份数据）。
+    var onToggleSave: () -> Void = {}
 
     @Environment(\.colorScheme) private var scheme
+    /// 本地偏好：列表是否显示帖子正文预览（我的 → 显示帖子正文）。
+    @ObservedObject private var prefs = PreferenceStore.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -57,8 +65,9 @@ struct PostRow: View {
             }
             .accessibilityIdentifier("home-post-open")
 
-            // 预览正文（3 行截断 + …）；真实列表页无正文时（尚未检测）不占空行
-            if !item.previewBody.isEmpty {
+            // 预览正文（3 行截断 + …）；真实列表页无正文时（尚未检测）不占空行；
+            // 「我的 → 显示帖子正文」关闭后只显示标题，省屏幕。
+            if prefs.showPostContent, !item.previewBody.isEmpty {
                 Button { onOpen() } label: {
                     Text(item.previewBody)
                     .font(.subheadline)
@@ -94,7 +103,8 @@ struct PostRow: View {
                 }
             }
 
-            // 操作栏（全图标 + 必要数字）
+            // 操作栏（全图标 + 必要数字）。
+            // 分享 / 收藏 都是真做的事：分享走系统分享面板，收藏写本地书签（与详情页同源）。
             HStack(spacing: 22) {
                 Button { onReply() } label: {
                     Image(systemName: "bubble.right")
@@ -102,15 +112,17 @@ struct PostRow: View {
                 }
                 .foregroundStyle(Color.appTextSecondary(scheme))
 
-                Button { } label: {
-                    Image(systemName: "arrowshape.turn.up.right")
+                if let threadURL {
+                    ShareLink(item: threadURL) {
+                        Image(systemName: "arrowshape.turn.up.right")
+                    }
+                    .foregroundStyle(Color.appTextSecondary(scheme))
                 }
-                .foregroundStyle(Color.appTextSecondary(scheme))
 
-                Button { } label: {
-                    Image(systemName: "star")
+                Button { onToggleSave() } label: {
+                    Image(systemName: isSaved ? "star.fill" : "star")
                 }
-                .foregroundStyle(Color.appTextSecondary(scheme))
+                .foregroundStyle(isSaved ? Color.appGold(scheme) : Color.appTextSecondary(scheme))
 
                 HStack(spacing: 3) {
                     Image(systemName: "diamond")

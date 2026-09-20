@@ -24,7 +24,11 @@ struct NewPostView: View {
     @State private var didSucceed = false
 
     /// 自动附加的占位符（规避最短字数凑字规则），与正文隔一个空行提交。
-    private let placeholder = "Peace&Love"
+    /// 取值来自本地偏好（我的 → 回帖占位符），与回复框共用同一份设置。
+    private var placeholder: String { prefs.replyPlaceholder }
+
+    /// 本地偏好（占位符设置改动后这里立即跟着变）。
+    @ObservedObject private var prefs = PreferenceStore.shared
 
     init(defaultFid: Int = 2) {
         self.defaultFid = defaultFid

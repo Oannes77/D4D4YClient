@@ -54,7 +54,7 @@ struct SavedThreadsView: View {
                 if let author = item.authorName, !author.isEmpty {
                     Text(author)
                 }
-                Text(item.savedAt.formatted(date: .numeric, time: .shortened))
+                Text(RelativeDateText.friendly(item.savedAt))
                 Spacer()
                 Image(systemName: "star.fill")
                     .foregroundStyle(Color.appGold(scheme))

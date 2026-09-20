@@ -29,9 +29,11 @@ targets:
     testTarget: D4D4YClientTests
     settings:
       base:
-        GENERATE_INFOPLIST_FILE: YES
-        INFOPLIST_KEY_UILaunchScreen_Generation: YES
-        INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait"
+        # 手写 Info.plist（Support/Info.plist）：后台刷新的 UIBackgroundModes 与
+        # BGTaskSchedulerPermittedIdentifiers 是数组，无法用 INFOPLIST_KEY_* 表达。
+        # 因此关掉自动生成，改用显式文件；CFBundle* 等键仍由构建设置自动注入。
+        INFOPLIST_FILE: Support/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
         ENABLE_TESTABILITY: YES
         SWIFT_VERSION: "5.9"
         MARKETING_VERSION: 1.0.0

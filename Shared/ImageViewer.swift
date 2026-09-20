@@ -50,11 +50,11 @@ struct ImageViewer: View {
                     .font(.footnote)
                     .foregroundStyle(.white)
             } else if urls.count == 1 {
-                ZoomableImage(url: urls[0])
+                imageSlot(url: urls[0], index: 0)
             } else {
                 TabView(selection: $index) {
                     ForEach(Array(urls.enumerated()), id: \.offset) { pair in
-                        ZoomableImage(url: pair.element)
+                        imageSlot(url: pair.element, index: pair.offset)
                             .tag(pair.offset)
                     }
                 }
@@ -66,6 +66,19 @@ struct ImageViewer: View {
         }
         .overlay(alignment: .topTrailing) { closeButton }
         .statusBarHidden(true)
+    }
+
+    /// 单个图片槽位。
+    ///
+    /// 演示 / 截图模式改用**本地绘制**的占位图：截图不再依赖外网图源，
+    /// 避免 CI 网络抖动时出现「一直转圈」的截图（真实模式仍走 `AsyncImage` 网络加载）。
+    @ViewBuilder
+    private func imageSlot(url: URL, index: Int) -> some View {
+        if DemoMode.isOn {
+            DemoGalleryImage(index: index)
+        } else {
+            ZoomableImage(url: url)
+        }
     }
 
     // MARK: - 浮层
@@ -95,9 +108,33 @@ struct ImageViewer: View {
     }
 }
 
+/// 演示 / 截图用的本地占位图：纯 SwiftUI 渐变 + 序号，不依赖任何网络图源。
+/// 只用于 `DemoMode`，真实看图一律走 `ZoomableImage`（网络 + 缩放）。
+private struct DemoGalleryImage: View {
+    let index: Int
+
+    private static let palettes: [[Color]] = [
+        [Color(hex: 0x534AB7), Color(hex: 0x8F86E8)],
+        [Color(hex: 0x2E2A5C), Color(hex: 0x534AB7)],
+        [Color(hex: 0x1F7A6B), Color(hex: 0x4ADE9B)]
+    ]
+
+    var body: some View {
+        LinearGradient(colors: Self.palettes[index % Self.palettes.count],
+                       startPoint: .topLeading,
+                       endPoint: .bottomTrailing)
+            .aspectRatio(3.0 / 2.0, contentMode: .fit)
+            .frame(maxWidth: .infinity)
+            .overlay(
+                Text("4D4Y \(index + 1)")
+                    .font(.largeTitle).fontWeight(.bold)
+                    .foregroundStyle(.white)
+            )
+    }
+}
+
 /// 单张可缩放图片：自己的缩放 / 平移状态，翻页时互不影响。
-private struct ZoomableImage: View {
-    let url: URL
+private struct ZoomableImage: View {    let url: URL
 
     @State private var scale: CGFloat = 1.0
     @State private var lastScale: CGFloat = 1.0

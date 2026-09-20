@@ -71,8 +71,7 @@ struct AccountSecurityView: View {
             Spacer()
         }
         .padding(16)
-        .background(Color.appSurface(scheme))
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .appCard(scheme)
     }
 
     private var hintCard: some View {
@@ -86,8 +85,7 @@ struct AccountSecurityView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .background(Color.appSurface(scheme))
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .appCard(scheme)
     }
 
     private var logoutButton: some View {

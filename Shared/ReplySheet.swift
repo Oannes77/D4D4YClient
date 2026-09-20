@@ -18,13 +18,13 @@ struct ReplySheet: View {
 
     init(tid: Int,
          initial: String = "",
-         placeholder: String = "Peace&Love",
+         placeholder: String? = nil,
          onSubmit: @escaping (String) -> Void) {
         self.tid = tid
         // initial 仅在「长按引用」时携带引用文本进输入框；默认为空，
         // 占位符不进输入框（见下方说明行）。
         self._text = State(initialValue: initial)
-        self.placeholder = placeholder
+        self.placeholder = placeholder ?? PreferenceStore.shared.replyPlaceholder
         self.onSubmit = onSubmit
     }
 

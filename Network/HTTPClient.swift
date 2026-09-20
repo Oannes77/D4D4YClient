@@ -58,6 +58,12 @@ final class HTTPClient {
 
     static let baseURL = URL(string: "https://www.4d4y.com/forum/")!
 
+    /// 站内绝对地址（系统分享 / 浏览器打开用）：由相对路径现算，永远指向论坛本站。
+    /// 例：`absoluteURL(path: "viewthread.php?tid=193033")`。
+    static func absoluteURL(path: String) -> URL? {
+        URL(string: path, relativeTo: baseURL)?.absoluteURL
+    }
+
     /// 模拟移动 Safari。此站对 UA 无特殊限制，但保留完整 UA 更接近正常浏览器。
     private static let defaultHeaders: [String: String] = [
         "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
