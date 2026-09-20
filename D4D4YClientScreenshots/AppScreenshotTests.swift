@@ -37,6 +37,8 @@ final class AppScreenshotTests: XCTestCase {
         Target(screen: "savedThreads", waitElement: "我的收藏",        settle: 1.2),
         // ⑥ 上一轮改动、尚未验收：回帖占位符输入框补可见边界
         Target(screen: "replyPlaceholder", waitElement: "效果预览",     settle: 1.0),
+        // ⑦ 举报私信：收件人 = 管理员 4d4y（UID 29），输入框预填帖子链接草稿
+        Target(screen: "reportChat",   waitElement: "4d4y",          settle: 1.2),
     ]
 
     /// 已验收通过的界面（默认不跑）。需要全量回归时，把这组拼到 `targets` 后面即可。

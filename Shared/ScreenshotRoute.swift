@@ -16,9 +16,10 @@ enum ScreenshotScreen: String, CaseIterable {
     case newPost             // 发帖页
     case boardManage         // 板块管理（置顶/收藏与排序）
     case chat                // 私信会话
+    case reportChat          // 举报私信（给管理员，预填帖子链接草稿）
     case message             // 消息（站内短信 / 系统消息）
     case profile             // 我的
-    case savedThreads        // 我的收藏（本地书签）
+    case savedThreads        // 我的收藏（服务器收藏列表）
     case blockedUsers        // 黑名单（本地屏蔽）
     case myThreads           // 我的中心：我的帖子（my.php）
     case myFriends           // 我的中心：好友（my.php）
@@ -126,6 +127,18 @@ struct ScreenshotRouteView: View {
             NavigationStack { BoardManageView() }
         case .chat:
             NavigationStack { MessageChatView(userID: 1024, userName: "老橡树") }
+        case .reportChat:
+            // 举报私信：收件人固定为管理员 4d4y（UID 29），输入框预填帖子链接草稿
+            // （与 ThreadDetailView.reportDraft 同口径；**仍需用户自己点发送**，不自动提交）。
+            NavigationStack {
+                MessageChatView(
+                    userID: PreferenceStore.defaultReportAdminUID,
+                    userName: PreferenceStore.defaultReportAdminName,
+                    initialDraft: "举报帖子：\(DemoData.sampleThread.title)\n"
+                        + (URL(string: "viewthread.php?tid=\(DemoData.sampleThread.id)",
+                               relativeTo: HTTPClient.baseURL)?.absoluteURL.absoluteString ?? "")
+                )
+            }
         case .savedThreads:
             NavigationStack { SavedThreadsView() }
         case .blockedUsers:

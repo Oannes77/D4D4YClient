@@ -81,6 +81,13 @@ struct ThreadDetailView: View {
             relativeTo: HTTPClient.baseURL)?.absoluteURL
     }
 
+    /// 举报私信的**预填草稿**：一段说明 + 该帖链接。
+    /// 只是草稿 —— 仍要用户自己点发送，不自动提交、不假装已发出。
+    private var reportDraft: String {
+        guard let url = threadWebURL else { return "" }
+        return "举报帖子：\(viewModel.thread.title)\n\(url.absoluteString)"
+    }
+
     var body: some View {
         // Demo/截图模式：不用 ScrollView，避免 UIKit UITextView 内容高度变化导致
         // SwiftUI ScrollView 滚动位置漂移，保证截图首帖（头像/作者/眼睛/操作栏）
@@ -128,7 +135,9 @@ struct ThreadDetailView: View {
                 }
                 .sheet(isPresented: $showReportChat) {
                     NavigationStack {
-                        MessageChatView(userID: reportAdminUID, userName: "管理员")
+                        MessageChatView(userID: reportAdminUID,
+                                        userName: PreferenceStore.defaultReportAdminName,
+                                        initialDraft: reportDraft)
                     }
                 }
                 .alert("提示", isPresented: Binding(
@@ -173,7 +182,9 @@ struct ThreadDetailView: View {
                 }
                 .sheet(isPresented: $showReportChat) {
                     NavigationStack {
-                        MessageChatView(userID: reportAdminUID, userName: "管理员")
+                        MessageChatView(userID: reportAdminUID,
+                                        userName: PreferenceStore.defaultReportAdminName,
+                                        initialDraft: reportDraft)
                     }
                 }
                 .alert("提示", isPresented: Binding(
@@ -328,8 +339,9 @@ struct ThreadDetailView: View {
     // MARK: - 举报
 
     /// 论坛没有原生举报接口：先把该帖链接复制到剪贴板；
-    /// 若已配置收件人（`PreferenceStore.reportAdminUID`）且已登录，直接打开给管理员的私信。
-    /// 未配置 / 未登录都只复制链接并如实说明，**绝不假装举报已发出**。
+    /// 若已登录，直接打开给管理员（`PreferenceStore.reportAdminUID`，默认 4d4y/UID 29）的私信，
+    /// 并把链接**预填成草稿**（仍需用户自己点发送）。
+    /// 未登录只复制链接并如实说明，**绝不假装举报已发出**。
     private func reportThread() {
         guard let url = threadWebURL else {
             actionNotice = "拿不到该帖的网页地址，无法复制链接。"
@@ -342,9 +354,9 @@ struct ThreadDetailView: View {
             reportAdminUID = admin
             showReportChat = true
         } else if admin > 0 {
-            actionNotice = "链接已复制。举报要通过站内短信发给管理员，请先登录后再试。"
+            actionNotice = "链接已复制。举报要私信管理员 \(PreferenceStore.defaultReportAdminName)，请先登录后再试。"
         } else {
-            actionNotice = "链接已复制。还没有配置举报收件人，可直接粘贴发给管理员（可在设置里填写收件人 UID）。"
+            actionNotice = "链接已复制。没有可用的举报收件人，请直接粘贴发给管理员。"
         }
     }
 

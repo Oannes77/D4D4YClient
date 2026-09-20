@@ -13,14 +13,17 @@ struct MessageChatView: View {
     @Environment(\.colorScheme) private var scheme
     @EnvironmentObject private var session: SessionManager
     @StateObject private var viewModel: MessageChatViewModel
-    /// 私信不使用占位符：输入框初始为空，仅保留系统提示「发消息…」。
+    /// 私信不使用占位符：输入框初始为空（或由调用方预填，例如举报时带入帖子链接）。
     @State private var draft = ""
     @State private var showLogin = false
 
-    init(userID: Int? = nil, userName: String) {
+    /// - Parameter initialDraft: 预填到输入框的文本（举报时带入帖子链接）。
+    ///   仍然只是**草稿**：必须用户自己点发送才真正发出，不自动提交。
+    init(userID: Int? = nil, userName: String, initialDraft: String = "") {
         self.userID = userID
         self.userName = userName
         _viewModel = StateObject(wrappedValue: MessageChatViewModel(userID: userID, userName: userName))
+        _draft = State(initialValue: initialDraft)
     }
 
     private var myUserID: Int? {

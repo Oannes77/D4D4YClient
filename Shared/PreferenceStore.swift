@@ -15,6 +15,13 @@ final class PreferenceStore: ObservableObject {
     /// 占位符默认值（论坛最短字数规则用的凑字文本）。
     static let defaultReplyPlaceholder = "Peace&Love"
 
+    /// 举报私信的**默认收件人**：论坛管理员 `4d4y`，UID 29（由用户提供）。
+    /// 论坛没有原生举报接口，客户端采用「复制该帖链接 + 私信该账号」的方式。
+    static let defaultReportAdminUID = 29
+
+    /// 上述默认收件人的显示名（仅用于私信页标题）。
+    static let defaultReportAdminName = "4d4y"
+
     private let defaults: UserDefaults
 
     private enum Key {
@@ -51,10 +58,11 @@ final class PreferenceStore: ObservableObject {
         didSet { defaults.set(lastPushCheckAt, forKey: Key.lastPushCheckAt) }
     }
 
-    /// 举报私信的收件人 uid（`0` = 尚未设置）。
+    /// 举报私信的收件人 uid（`0` = 不使用默认收件人）。
     ///
     /// 论坛没有原生举报接口，客户端采用「复制该帖链接 + 私信管理员」的方式。
-    /// 未设置收件人时，举报只复制链接并提示用户自行发送 —— **不假装已发出**。
+    /// 平时收件人固定为 `defaultReportAdminUID`（管理员 4d4y）；
+    /// 只有在已登录时才会真正打开私信页 —— 未登录只复制链接并提示先登录，**不假装已发出**。
     @Published var reportAdminUID: Int {
         didSet { defaults.set(reportAdminUID, forKey: Key.reportAdminUID) }
     }
@@ -67,7 +75,9 @@ final class PreferenceStore: ObservableObject {
         self.showPostContent = defaults.object(forKey: Key.showPostContent) as? Bool ?? true
         self.pushFrequencyMinutes = defaults.integer(forKey: Key.pushMinutes)
         self.lastPushCheckAt = defaults.object(forKey: Key.lastPushCheckAt) as? Date
-        self.reportAdminUID = defaults.integer(forKey: Key.reportAdminUID)
+        // 未存过（或存成 0）时回落到内置的管理员 UID，保证举报功能开箱可用。
+        let storedAdmin = defaults.integer(forKey: Key.reportAdminUID)
+        self.reportAdminUID = storedAdmin > 0 ? storedAdmin : Self.defaultReportAdminUID
     }
 
     // MARK: - 展示用文案
