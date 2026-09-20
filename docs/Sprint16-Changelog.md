@@ -101,8 +101,10 @@ Sprint 15 的初版把两者混用同一 `isBlocked` 标志，本轮拆开成两
   收件人 UID 来自 `Shared/PreferenceStore.swift` 新增的 `reportAdminUID` 配置项。
 - `toggleSaveThread()`：走服务器收藏，结果以**回读**为准。
 
-> ⚠️ **待补**：`reportAdminUID` 默认 `0`，未配置时举报只复制链接并提示。
-> 需要用户提供「举报管理员的 UID」后填入。
+> ✅ **已补齐（提交 09b638a）**：举报收件人已定为管理员 **4d4y（UID 29）**，
+> 写进 `PreferenceStore.defaultReportAdminUID` 作为内置默认值，开箱可用、无需用户配置。
+> 同时给 `MessageChatView` 加了 `initialDraft:`，举报时自动把「帖子标题 + 链接」预填成草稿
+> —— 但**仍要用户自己点发送**，不自动提交、不假装已发出。
 
 ---
 
@@ -176,6 +178,5 @@ Sprint 15 的初版把两者混用同一 `isBlocked` 标志，本轮拆开成两
    `attach[]` 是兜底猜测；若服务端拒绝，需按真机解析到的 file 域名修正。
 2. **收藏的候选 URL 需真机确认**：帖子页入口被模板注释，多候选是防御式方案，
    真机登录后应确认哪条命中，并删掉无效候选。
-3. **举报管理员 UID 待填**（`PreferenceStore.reportAdminUID`）。
-4. 用户可提供**体验账号**用于页面结构探查；届时只用于看结构，
+3. 用户可提供**体验账号**用于页面结构探查；届时只用于看结构，
    **不写代码、不提交 git、不打印凭据**（建议直接给另存的 HTML 以避免提供密码）。
