@@ -72,16 +72,16 @@ final class MessageChatViewModel: ObservableObject {
         isSending = true
         defer { isSending = false }
 
-        switch await repository.send(uid: userID, message: trimmed) {
-        case .success:
-            await load(myUserID: myUserID)
-            notice = "发送成功"
-            return true
-        case .failure(let error):
+        let result = await repository.send(uid: userID, message: trimmed)
+        if case .failure(let error) = result {
             Log.network.error("私信发送失败: \(String(describing: error), privacy: .public)")
             state = (error == .requiresLogin) ? .requiresLogin : state
             notice = error.localizedDescription
             return false
         }
+
+        await load(myUserID: myUserID)
+        notice = "发送成功"
+        return true
     }
 }
