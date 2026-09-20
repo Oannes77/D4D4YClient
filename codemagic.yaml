@@ -78,8 +78,13 @@ workflows:
         script: |
           cd $CM_BUILD_DIR
           xcodegen generate
-      - name: Boot simulator
-        script: xcrun simctl boot "$SIM_NAME" || true
+      - name: Boot simulator (fresh state)
+        script: |
+          # 重置模拟器状态后再 boot：上轮残留的进程/系统状态偶发导致
+          # “The test runner encountered an error”（runner 起不来 → 0 张截图、编译明明成功）。
+          xcrun simctl shutdown all || true
+          xcrun simctl erase "$SIM_NAME" || true
+          xcrun simctl boot "$SIM_NAME" || true
       - name: Build & run screenshot tests
         script: |
           # 注意：UI 测试若部分 Tab 偶发崩溃，仍要让后续 Collect 步骤执行，
