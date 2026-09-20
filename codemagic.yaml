@@ -98,6 +98,10 @@ workflows:
             -derivedDataPath build/screenshots_derived \
             -resultBundlePath "$CM_BUILD_DIR/test.xcresult" 2>&1 | tee "$CM_BUILD_DIR/build_screenshots.log" || true
           echo "（UI 测试结束；部分 Tab 失败时仍继续导出已有截图附件）"
+          # 无论成功失败都打印测试侧摘要：runner 报错 / 单个用例失败 / 崩溃都能在这里看到，
+          # 免得 0 张时只能下载 1.9MB 完整日志排查。
+          echo "=== 测试结果摘要 ==="
+          grep -nE "Test Case '|Test Suite '|Test runner|execution failed|crashed|Crashed|terminated|timed out|Failed to|failed \(|error:" "$CM_BUILD_DIR/build_screenshots.log" 2>/dev/null | tail -60 || true
       - name: Collect screenshots
         script: |
           # 从 .xcresult 结果包导出 XCTAttachment 截图（Xcode 自带工具，零额外依赖）。
@@ -119,6 +123,12 @@ workflows:
             echo "!!! 导致 xcodebuild 并未真正运行 UI 测试（即使上面步骤显示 '完成'）。"
             echo "!!! 本次 build 日志中的 error 摘要如下（若为空则是运行时崩溃，需下载完整日志排查）："
             grep -n "error:" "$CM_BUILD_DIR/build_screenshots.log" 2>/dev/null | head -30 || true
+            echo ""
+            echo "=== runner / 崩溃 相关行 ==="
+            grep -nE "Test runner|execution failed|crashed|Crashed|Lost connection|timed out|unable to install|Unable to install|Terminating|Fatal|EXC_" "$CM_BUILD_DIR/build_screenshots.log" 2>/dev/null | head -40 || true
+            echo ""
+            echo "=== build 日志最后 60 行 ==="
+            tail -n 60 "$CM_BUILD_DIR/build_screenshots.log" 2>/dev/null || true
           fi
     artifacts:
       - screenshots/**/*.png

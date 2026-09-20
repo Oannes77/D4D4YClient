@@ -81,7 +81,16 @@ final class AppScreenshotTests: XCTestCase {
             if app.state == .runningForeground { app.terminate() }
             app.launch()
 
+            if app.state != .runningForeground {
+                // 首启偶发不在前台（模拟器刚 boot 完 / 上一轮 terminate 未落定）：重试一次再判定。
+                print("[Screenshots] 提示: \(target.screen) 首次启动未到前台 state=\(app.state.rawValue)，重试一次")
+                app.launch()
+                Thread.sleep(forTimeInterval: 2)
+            }
+
             guard app.state == .runningForeground else {
+                // 打印具体状态：0=unknown / 1=notRunning / 2=runningBackground / 3=runningForeground / 4=suspended。
+                print("[Screenshots] 失败: \(target.screen) 启动后仍不在前台 state=\(app.state.rawValue)")
                 XCTFail("截图前 App 已不在前台: \(target.screen)")
                 continue
             }
