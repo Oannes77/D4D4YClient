@@ -156,25 +156,9 @@ enum DemoData {
                 hasAttachment: false,
                 attachmentCount: 0
             ),
-            HomeThreadItem(
-                id: 188120,
-                boardName: "Discovery",
-                title: "[求助] PETG 打印温度到底设多少？总拉丝",
-                authorName: "Kepler",
-                authorID: 2077,
-                authorGroup: "高级会员",
-                previewBody: "换了卷新 PETG，255℃ 还是拉丝严重，底板 65℃。是不是料太潮了？大家 PETG 一般怎么存，有没有推荐的烘干参数。",
-                createdAtRaw: "5 小时前",
-                replies: 23,
-                shares: 3,
-                favorites: 8,
-                points: 430,
-                views: 1290,
-                hasImage: false,
-                imageURL: nil,
-                hasAttachment: true,
-                attachmentCount: 2
-            ),
+            // ⚠️ 顺序有讲究：这条的作者 `Discovery控`(uid 888) 在 `seed()` 里被本地拉黑，
+            // 首页应该渲染成「-已拉黑-」占位。放在**第 2 条**是为了让它落在首屏内
+            // —— 第 1 条带大图很高，占满首屏，放第 3 条就会被挤到屏幕外，截图验收看不到。
             HomeThreadItem(
                 id: 190455,
                 boardName: "Discovery",
@@ -193,6 +177,25 @@ enum DemoData {
                 imageURL: URL(string: "https://placehold.co/600x400/8F86E8/FFFFFF/png?text=Palm+Treo+650"),
                 hasAttachment: false,
                 attachmentCount: 0
+            ),
+            HomeThreadItem(
+                id: 188120,
+                boardName: "Discovery",
+                title: "[求助] PETG 打印温度到底设多少？总拉丝",
+                authorName: "Kepler",
+                authorID: 2077,
+                authorGroup: "高级会员",
+                previewBody: "换了卷新 PETG，255℃ 还是拉丝严重，底板 65℃。是不是料太潮了？大家 PETG 一般怎么存，有没有推荐的烘干参数。",
+                createdAtRaw: "5 小时前",
+                replies: 23,
+                shares: 3,
+                favorites: 8,
+                points: 430,
+                views: 1290,
+                hasImage: false,
+                imageURL: nil,
+                hasAttachment: true,
+                attachmentCount: 2
             ),
             HomeThreadItem(
                 id: 191200,

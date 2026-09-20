@@ -19,16 +19,48 @@ final class AppScreenshotTests: XCTestCase {
         let waitElement: String
         /// 元素出现后的额外稳定时间。
         let settle: TimeInterval
+        /// 可选：截图前把该 identifier 的元素**滚进可视区**。
+        /// 用于长首帖下方的操作栏这类「存在但在首屏之外」的元素 —— 不滚就只能拍到帖子正文。
+        let scrollToElement: String?
+        /// 可选：滚进可视区后再**点它一下**（用于展开 Menu，例如「分享」的两个选项）。
+        let tapElement: String?
+        /// 可选：点开后等待出现的文案，确认菜单真的展开了。
+        let tapWaitText: String?
+        /// 可选：附件名后缀。同一界面需要拍多张不同状态时用来区分（默认用 `screen`）。
+        let name: String?
+
+        init(screen: String,
+             waitElement: String,
+             settle: TimeInterval,
+             scrollToElement: String? = nil,
+             tapElement: String? = nil,
+             tapWaitText: String? = nil,
+             name: String? = nil) {
+            self.screen = screen
+            self.waitElement = waitElement
+            self.settle = settle
+            self.scrollToElement = scrollToElement
+            self.tapElement = tapElement
+            self.tapWaitText = tapWaitText
+            self.name = name
+        }
     }
 
     /// 待验收界面清单（已确认的界面不再重复截图，节省 CI 时间）。
     /// 新增/修改界面时只需在此增删一行；回归全量时把下方 `confirmedTargets` 合并进来即可。
     private let targets = [
         // Sprint 16 本轮改动：
-        // ① 首页：被拉黑作者的主题显示「-已拉黑-」占位（Demo 已屏蔽 demo 流中的一位作者）
+        // ① 首页：被拉黑作者的主题显示「-已拉黑-」占位
+        //    （Demo 流把被拉黑的作者放在第 2 条，确保占位落在首屏内 —— 第 1 条带大图很高）
         Target(screen: "home",         waitElement: "home-post-open", settle: 1.2),
         // ② 详情页操作栏：分享改为菜单（系统分享 / 分享给好友）+ 新增「举报」
-        Target(screen: "thread",       waitElement: "detail-reply",   settle: 1.2),
+        //    首帖正文很长，操作栏在首屏之外 —— 先滚进可视区，否则只能拍到正文，验收点根本看不到。
+        Target(screen: "thread",       waitElement: "detail-reply",   settle: 0.6,
+               scrollToElement: "post-share"),
+        // ②b 同一界面再拍一张：点开「分享」菜单，确认两个选项都在（系统分享 / 分享给好友）
+        Target(screen: "thread",       waitElement: "detail-reply",   settle: 0.6,
+               scrollToElement: "post-share", tapElement: "post-share",
+               tapWaitText: "分享给好友", name: "threadShareMenu"),
         // ③ 用户卡：加好友 / 搜贴 / 拉黑 三键真实化（不再是空按钮）
         Target(screen: "userCard",     waitElement: "加好友",          settle: 1.2),
         // ④ 发帖页：图片 / 附件选择与预览条
@@ -109,12 +141,22 @@ final class AppScreenshotTests: XCTestCase {
             // 等关键元素出现，确认界面真正渲染完成。
             waitForAnchor(app, target)
 
+            // 需要验收的元素若在首屏之外（例如长首帖下方的操作栏），先滚进可视区再拍。
+            if let id = target.scrollToElement {
+                scrollIntoView(app, id)
+            }
+            // 菜单类元素（分享 Menu）需要点开才能拍到选项。
+            if let id = target.tapElement {
+                expandMenu(app, id, expecting: target.tapWaitText)
+            }
+            Thread.sleep(forTimeInterval: target.settle)
+
             let screenshot = app.screenshot()
             // Xcode 16 的 XCUIScreenshot.pngRepresentation 返回非可选 Data，直接取值。
             let pngData = screenshot.pngRepresentation
             // 强制 public.png，避免默认输出 HEIC 导致 xcresulttool export 后 find *.png 得到 0 张。
             let attachment = XCTAttachment(data: pngData, uniformTypeIdentifier: "public.png")
-            attachment.name = "\(dark ? "dark" : "light")-\(target.screen)"
+            attachment.name = "\(dark ? "dark" : "light")-\(target.name ?? target.screen)"
             attachment.lifetime = .keepAlways
             add(attachment)
 
@@ -122,16 +164,61 @@ final class AppScreenshotTests: XCTestCase {
         }
     }
 
+    /// 按 identifier 找元素。
+    ///
+    /// 先试 `buttons`（多数是按钮），再退到「任意类型的后代」——
+    /// SwiftUI 的 `Menu` 在 XCUI 里不一定归类成 button，只按 buttons 找会漏掉。
+    private func element(_ app: XCUIApplication, _ identifier: String) -> XCUIElement {
+        let button = app.buttons[identifier].firstMatch
+        if button.exists { return button }
+        return app.descendants(matching: .any).matching(identifier: identifier).firstMatch
+    }
+
+    /// 把指定 identifier 的元素滚进可视区。
+    ///
+    /// 用 **`isHittable`（真的露出来且能点）** 作为判据，而不是固定滑动次数：
+    /// 首帖正文长短不一，固定次数要么滑不够（还是拍不到），要么滑过头（把操作栏顶出屏幕）。
+    private func scrollIntoView(_ app: XCUIApplication, _ identifier: String, maxSwipes: Int = 6) {
+        for _ in 0..<maxSwipes {
+            let el = element(app, identifier)
+            if el.exists && el.isHittable { return }
+            app.swipeUp()
+            Thread.sleep(forTimeInterval: 0.35)
+        }
+        print("[Screenshots] 警告: 未能把 \(identifier) 滚进可视区（仍按当前画面截图）")
+    }
+
+    /// 点开菜单类元素并等它的选项出现，这样截图才能拍到展开后的菜单。
+    private func expandMenu(_ app: XCUIApplication, _ identifier: String, expecting text: String?) {
+        let el = element(app, identifier)
+        guard el.exists && el.isHittable else {
+            print("[Screenshots] 警告: \(identifier) 不可点击，跳过展开")
+            return
+        }
+        el.tap()
+        guard let text else {
+            Thread.sleep(forTimeInterval: 0.8)
+            return
+        }
+        let item = app.buttons[text].firstMatch
+        let deadline = Date().addingTimeInterval(4)
+        while Date() < deadline {
+            if item.exists { return }
+            Thread.sleep(forTimeInterval: 0.2)
+        }
+        print("[Screenshots] 警告: 点开 \(identifier) 后未见「\(text)」")
+    }
+
     /// 等待关键元素出现，最多 12 秒。
     ///
     /// 同时盯「按钮」与「静态文本」两类元素：导航栏标题是静态文本，页内动作是按钮，
     /// 原先「先试按钮 12s、再试文本 3s」在最坏情况下要多花一个超时周期；
     /// 改为轮询后，标题类锚点（我的帖子 / 好友 / 关注 …）几乎立即命中。
+    ///
+    /// 注意：本方法**不再**负责 settle 停顿 —— 停顿统一放在 `runScreenshots` 里，
+    /// 因为「滚动 / 展开菜单」也发生在等待之后、截图之前（否则会多停一次，白白拉长 CI）。
     private func waitForAnchor(_ app: XCUIApplication, _ target: Target) {
-        guard !target.waitElement.isEmpty else {
-            Thread.sleep(forTimeInterval: target.settle)
-            return
-        }
+        guard !target.waitElement.isEmpty else { return }
         let text = target.waitElement
         let button = app.buttons[text].firstMatch
         let staticText = app.staticTexts[text].firstMatch
@@ -143,8 +230,7 @@ final class AppScreenshotTests: XCTestCase {
             Thread.sleep(forTimeInterval: 0.25)
         }
         if !found {
-            print("[Screenshots] 警告: \(target.screen) 等待元素 \(text) 超时，仍按 settle 截图")
+            print("[Screenshots] 警告: \(target.screen) 等待元素 \(text) 超时，仍按 current 画面截图")
         }
-        Thread.sleep(forTimeInterval: target.settle)
     }
 }
