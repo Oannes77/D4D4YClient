@@ -115,8 +115,8 @@ struct ProfileView: View {
     }
 
     // MARK: - 我的宫格
-    /// 六个入口全部可点：能接真实的直接进列表（收藏 / 黑名单走本地 SwiftData），
-    /// 「需登录才有内容」的进「尚未接入」说明页并给网页版出口 —— 不再有点了没反应的死按钮。
+    /// 六个入口全部可点、且都指向真实内容：收藏 / 黑名单走本地 SwiftData，
+    /// 帖子 / 回复 / 好友 / 关注走论坛「我的中心」—— 不再有点了没反应的死按钮。
     private var myGrid: some View {
         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 0) {
             ForEach(MyFeature.allCases) { feature in
@@ -139,35 +139,19 @@ struct ProfileView: View {
         .appCard(scheme)
     }
 
-    /// 宫格目标页。凡是需要登录才有内容、而客户端还没接的栏目，
-    /// 一律给「说明 + 网页版出口」，绝不显示假列表。
+    /// 宫格目标页。六个入口全部接真实内容：
+    /// - 收藏 / 黑名单 = 本地 SwiftData 列表（点进去就是真实数据）；
+    /// - 帖子 / 回复 / 好友 / 关注 = 论坛「我的中心」（`my.php`）真实列表，
+    ///   未登录时给登录入口，站点没有该栏目时如实说明并给网页版出口，绝不显示假列表。
     @ViewBuilder
     private func destination(for feature: MyFeature) -> some View {
         switch feature {
-        case .saved:
-            SavedThreadsView()
-        case .blocked:
-            BlockedUsersView()
-        case .threads:
-            UnavailableFeatureView(
-                title: "我的帖子",
-                message: "「我的帖子」来自论坛的我的中心（my.php），必须登录后才能读取。客户端尚未接入这个页面，所以这里不显示任何内容。",
-                webPath: "my.php?item=threads")
-        case .posts:
-            UnavailableFeatureView(
-                title: "我的回复",
-                message: "「我的回复」来自论坛的我的中心（my.php），必须登录后才能读取。客户端尚未接入这个页面，所以这里不显示任何内容。",
-                webPath: "my.php?item=posts")
-        case .friends:
-            UnavailableFeatureView(
-                title: "好友",
-                message: "好友列表来自论坛的我的中心（my.php），必须登录后才能读取，客户端尚未接入。",
-                webPath: "my.php?item=buddylist")
-        case .follows:
-            UnavailableFeatureView(
-                title: "关注",
-                message: "论坛没有独立的「关注」列表，只有好友与订阅，都放在我的中心里，必须登录后才能读取，客户端尚未接入。",
-                webPath: "my.php?item=buddylist")
+        case .saved:   SavedThreadsView()
+        case .blocked: BlockedUsersView()
+        case .threads: MySpaceListView(kind: .threads)
+        case .posts:   MySpaceListView(kind: .replies)
+        case .friends: MySpaceListView(kind: .friends)
+        case .follows: MySpaceListView(kind: .follows)
         }
     }
 
@@ -316,7 +300,8 @@ struct ProfileView: View {
 
 /// 「我的」宫格的六个入口。
 /// - `saved` / `blocked` 走本地数据（SwiftData），点进去就是真实列表；
-/// - `threads` / `posts` / `friends` / `follows` 需要登录后从论坛「我的中心」读取，客户端尚未接入。
+/// - `threads` / `posts` / `friends` / `follows` 走论坛「我的中心」（`my.php`），
+///   内容在服务器上、需要登录，界面按「登录门 / 无此栏目 / 结构未识别」分别如实呈现。
 private enum MyFeature: String, CaseIterable, Identifiable {
     case threads, posts, saved, friends, follows, blocked
 

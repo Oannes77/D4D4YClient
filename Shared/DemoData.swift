@@ -262,4 +262,58 @@ enum DemoData {
                            group: "论坛会员", posts: nil, points: nil,
                            signature: nil, registeredRaw: nil, location: nil)
     }
+
+    // MARK: - 我的中心（my.php）样例
+
+    /// 「我的」宫格四栏的离线样例（仅截图用；真实模式走 `my.php`）。
+    ///
+    /// 「关注」刻意返回 `.sectionMissing`：4D4Y 用的是 Discuz! 7.2，它的「我的中心」
+    /// 没有「关注」栏目。演示数据**不假装有**，与真实模式的判断保持同一口径。
+    static func mySpaceDemo(kind: MySpaceKind) -> Result<[MySpaceEntry], MySpaceError> {
+        switch kind {
+        case .threads:
+            return .success([
+                MySpaceEntry(id: "thread:193033",
+                             title: "Hi-pda PPC有关精华贴汇总，初学者和疑惑者进 06 年 7 月",
+                             detail: "Discovery · 36 回复",
+                             timeRaw: "2004-7-22 00:42",
+                             threadID: 193033, userID: nil, userName: nil),
+                MySpaceEntry(id: "thread:188120",
+                             title: "PETG 打印温度到底设多少？总拉丝",
+                             detail: "Discovery · 23 回复",
+                             timeRaw: "昨天 14:05",
+                             threadID: 188120, userID: nil, userName: nil),
+                MySpaceEntry(id: "thread:190455",
+                             title: "收了台 Palm Treo 650，键盘手感绝了",
+                             detail: "Discovery · 102 回复",
+                             timeRaw: "3 天前",
+                             threadID: 190455, userID: nil, userName: nil)
+            ])
+        case .replies:
+            return .success([
+                MySpaceEntry(id: "thread:193033",
+                             title: "Re: Hi-pda PPC有关精华贴汇总，初学者和疑惑者进 06 年 7 月",
+                             detail: "Discovery · 我的回复在第 12 楼",
+                             timeRaw: "今天 09:12",
+                             threadID: 193033, userID: nil, userName: nil),
+                MySpaceEntry(id: "thread:188120",
+                             title: "Re: PETG 打印温度到底设多少？总拉丝",
+                             detail: "Discovery · 我的回复在第 4 楼",
+                             timeRaw: "昨天 20:31",
+                             threadID: 188120, userID: nil, userName: nil)
+            ])
+        case .friends:
+            return .success([
+                MySpaceEntry(id: "user:1024", title: "老橡树", detail: "论坛元老 · UID 1024",
+                             timeRaw: "", threadID: nil, userID: 1024, userName: "老橡树"),
+                MySpaceEntry(id: "user:2077", title: "Kepler", detail: "高级会员 · UID 2077",
+                             timeRaw: "", threadID: nil, userID: 2077, userName: "Kepler"),
+                MySpaceEntry(id: "user:888", title: "Discovery控", detail: "论坛元老 · UID 888",
+                             timeRaw: "", threadID: nil, userID: 888, userName: "Discovery控")
+            ])
+        case .follows:
+            // 本站没有这个栏目：演示数据与真实判断一致，不凭空造一份列表。
+            return .failure(.sectionMissing(kind.title))
+        }
+    }
 }

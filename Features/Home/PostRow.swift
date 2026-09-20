@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 
 /// 首页信息流单帖（Threads 风格卡片行）。
 ///
@@ -21,6 +22,18 @@ struct PostRow: View {
     @Environment(\.colorScheme) private var scheme
     /// 本地偏好：列表是否显示帖子正文预览（我的 → 显示帖子正文）。
     @ObservedObject private var prefs = PreferenceStore.shared
+    /// 阅读设置：列表密度（我的 → 主题外观 → 列表密度）。
+    @Query private var settings: [LocalSettings]
+
+    /// 行内纵向留白随「列表密度」联动：紧凑 8 / 标准 12 / 宽松 18。
+    /// 与 `PostCell` / `ThreadListView` 同一口径，避免同一设置在各个列表表现不一致。
+    private var densityPadding: CGFloat {
+        switch settings.first?.listDensity ?? "normal" {
+        case "compact": return 8
+        case "comfortable": return 18
+        default: return 12
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -144,7 +157,7 @@ struct PostRow: View {
             }
             .font(.subheadline)
         }
-        .padding(.vertical, 12)
+        .padding(.vertical, densityPadding)
         .padding(.horizontal, 16)
     }
 }
