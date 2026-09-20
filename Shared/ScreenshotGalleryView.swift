@@ -12,6 +12,9 @@ struct ScreenshotGalleryView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.colorScheme) private var scheme
 
+    /// 未读角标与正式版同一口径（由 `MessageViewModel` 读收件箱后写入），不写死数字。
+    @ObservedObject private var unread = UnreadBadge.shared
+
     var body: some View {
         TabView {
             HomeView()
@@ -19,7 +22,7 @@ struct ScreenshotGalleryView: View {
 
             MessageView()
                 .tabItem { Label("消息", systemImage: "bell") }
-                .badge(3)
+                .badge(unread.privateMessages)
 
             ProfileView()
                 .tabItem { Label("我的", systemImage: "person") }

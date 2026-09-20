@@ -83,7 +83,22 @@ enum DemoData {
         if (try? context.fetchCount(settingsDescriptor)) == 0 {
             context.insert(LocalSettings())
         }
+
+        // 本地收藏样例（我的 → 收藏）：Demo 下预置两条，便于截图验收列表。
+        for entry in savedThreadSamples where !SavedThread.isSaved(tid: entry.tid, context: context) {
+            context.insert(SavedThread(tid: entry.tid, title: entry.title,
+                                       boardName: entry.board, authorName: entry.author))
+        }
+        // 黑名单样例（我的 → 黑名单）：仅本机生效，演示数据不涉及真实用户。
+        BlockedUser.block(uid: 9527, username: "灌水机器人", context: context)
+        try? context.save()
     }
+
+    /// 本地收藏演示条目（tid 与真实主题对应）。
+    private static let savedThreadSamples: [(tid: Int, title: String, board: String, author: String)] = [
+        (188120, "PETG 打印温度到底设多少？总拉丝", "Discovery", "Kepler"),
+        (190455, "收了台 Palm Treo 650，键盘手感绝了", "Discovery", "Discovery控")
+    ]
 
     /// 为帖子列表行注入 📷 / 📎 媒体标识（跳过网络检测，直接按 tid 标记）。
     @MainActor

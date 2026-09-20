@@ -114,35 +114,61 @@ struct ProfileView: View {
     }
 
     // MARK: - 我的宫格
+    /// 六个入口全部可点：能接真实的直接进列表（收藏 / 黑名单走本地 SwiftData），
+    /// 「需登录才有内容」的进「尚未接入」说明页并给网页版出口 —— 不再有点了没反应的死按钮。
     private var myGrid: some View {
         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 0) {
-            ForEach(myItems) { item in
-                Button { } label: {
+            ForEach(MyFeature.allCases) { feature in
+                NavigationLink {
+                    destination(for: feature)
+                } label: {
                     VStack(spacing: 8) {
-                        Image(systemName: item.icon)
+                        Image(systemName: feature.icon)
                             .font(.title2)
                             .foregroundStyle(Color.appPrimary(scheme))
-                        Text(item.title)
+                        Text(feature.title)
                             .font(.caption)
                             .foregroundStyle(Color.appTextSecondary(scheme))
                     }
                     .frame(maxWidth: .infinity, minHeight: 72)
                 }
+                .buttonStyle(.plain)
             }
         }
         .background(Color.appSurface(scheme))
         .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 
-    private var myItems: [MyItem] {
-        [
-            MyItem(icon: "doc.text", title: "帖子"),
-            MyItem(icon: "bubble.left", title: "回复"),
-            MyItem(icon: "star", title: "收藏"),
-            MyItem(icon: "person.2", title: "好友"),
-            MyItem(icon: "person.crop.circle.badge.checkmark", title: "关注"),
-            MyItem(icon: "person.crop.circle.badge.xmark", title: "黑名单")
-        ]
+    /// 宫格目标页。凡是需要登录才有内容、而客户端还没接的栏目，
+    /// 一律给「说明 + 网页版出口」，绝不显示假列表。
+    @ViewBuilder
+    private func destination(for feature: MyFeature) -> some View {
+        switch feature {
+        case .saved:
+            SavedThreadsView()
+        case .blocked:
+            BlockedUsersView()
+        case .threads:
+            UnavailableFeatureView(
+                title: "我的帖子",
+                message: "「我的帖子」来自论坛的我的中心（my.php），必须登录后才能读取。客户端尚未接入这个页面，所以这里不显示任何内容。",
+                webPath: "my.php?item=threads")
+        case .posts:
+            UnavailableFeatureView(
+                title: "我的回复",
+                message: "「我的回复」来自论坛的我的中心（my.php），必须登录后才能读取。客户端尚未接入这个页面，所以这里不显示任何内容。",
+                webPath: "my.php?item=posts")
+        case .friends:
+            UnavailableFeatureView(
+                title: "好友",
+                message: "好友列表来自论坛的我的中心（my.php），必须登录后才能读取，客户端尚未接入。",
+                webPath: "my.php?item=buddylist")
+        case .follows:
+            UnavailableFeatureView(
+                title: "关注",
+                message: "论坛没有独立的「关注」列表，只有好友与订阅，都放在我的中心里，必须登录后才能读取，客户端尚未接入。",
+                webPath: "my.php?item=buddylist")
+        }
     }
 
     // MARK: - 设置框
@@ -247,8 +273,34 @@ struct ProfileView: View {
 }
 
 // MARK: - 宫格模型
-private struct MyItem: Identifiable {
-    let id = UUID()
-    let icon: String
-    let title: String
+
+/// 「我的」宫格的六个入口。
+/// - `saved` / `blocked` 走本地数据（SwiftData），点进去就是真实列表；
+/// - `threads` / `posts` / `friends` / `follows` 需要登录后从论坛「我的中心」读取，客户端尚未接入。
+private enum MyFeature: String, CaseIterable, Identifiable {
+    case threads, posts, saved, friends, follows, blocked
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .threads: return "帖子"
+        case .posts:   return "回复"
+        case .saved:   return "收藏"
+        case .friends: return "好友"
+        case .follows: return "关注"
+        case .blocked: return "黑名单"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .threads: return "doc.text"
+        case .posts:   return "bubble.left"
+        case .saved:   return "star"
+        case .friends: return "person.2"
+        case .follows: return "person.crop.circle.badge.checkmark"
+        case .blocked: return "person.crop.circle.badge.xmark"
+        }
+    }
 }

@@ -3,8 +3,9 @@ import SwiftUI
 /// 私信会话（消息 → 站内短信 → 选一条短信）。
 ///
 /// Threads 极简气泡：对方消息靠左灰底，自己的消息靠右紫色；底部输入框常驻。
-/// 数据来自真实 `pm.php?action=view&uid=NNN`；未登录时给登录入口，
-/// 发送接口未接入前**不假装发送成功**（明确提示，输入内容保留）。
+/// 数据来自真实 `pm.php?action=view&uid=NNN`；未登录时给登录入口。
+/// 发送走真实 `pm.php` 发送表单（运行时动态解析 + GBK 提交 + 回会话页确认），
+/// **只有服务端确认送达才清空输入**，失败保留输入并明确提示原因。
 struct MessageChatView: View {
     let userID: Int?
     let userName: String
@@ -176,13 +177,23 @@ struct MessageChatView: View {
                 .cornerRadius(18)
                 .foregroundStyle(Color.appTextPrimary(scheme))
 
-            Button("发送") {
-                viewModel.sendUnavailable()
+            Button {
+                let text = draft
+                Task {
+                    // 只有服务端确认送达才清空输入；失败保留内容并弹原因。
+                    if await viewModel.send(text, myUserID: myUserID) { draft = "" }
+                }
+            } label: {
+                if viewModel.isSending {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Text("发送")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(draft.isEmpty ? Color.appTextTertiary(scheme) : Color.appPrimary(scheme))
+                }
             }
-            .font(.subheadline)
-            .fontWeight(.semibold)
-            .foregroundStyle(draft.isEmpty ? Color.appTextTertiary(scheme) : Color.appPrimary(scheme))
-            .disabled(draft.isEmpty)
+            .disabled(draft.isEmpty || viewModel.isSending)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)

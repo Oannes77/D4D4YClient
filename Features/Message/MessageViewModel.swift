@@ -49,8 +49,13 @@ final class MessageViewModel: ObservableObject {
 
     func load() async {
         // 演示/截图模式：用离线样例，不联网、不碰鉴权。
+        // 角标口径与正式模式完全一致：**读到的未读条数就是角标数**，不写死数字。
         if DemoMode.isOn {
-            state = .loaded(segment == .pm ? DemoData.pmInboxDemo() : DemoData.systemMessagesDemo())
+            let items = segment == .pm ? DemoData.pmInboxDemo() : DemoData.systemMessagesDemo()
+            if segment == .pm {
+                UnreadBadge.shared.setPrivateMessages(items.filter { $0.isUnread == true }.count)
+            }
+            state = .loaded(items)
             return
         }
 

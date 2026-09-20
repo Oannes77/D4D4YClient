@@ -283,3 +283,71 @@ final class ThreadMediaCache {
         return (try? context.fetch(descriptor))?.first
     }
 }
+
+/// 本地收藏（书签）。
+///
+/// **为什么是本地收藏而不是论坛收藏**：4D4Y 的 Discuz 模板在帖子页把「收藏 / 分享」
+/// 入口整块 HTML 注释掉了（真实页面里 `<a … onclick="showDialog($('favoritewin')…)">收藏</a>`
+/// 位于 `<!-- … -->` 之内），`misc.php?action=favorite` 对未登录请求返回空响应，
+/// 无法在客户端验证。因此这里**不做「假装收藏到论坛」**：
+/// 星标只写本地 SwiftData，纯本地书签，不修改任何服务器数据。
+/// 若将来论坛恢复收藏接口，只需替换本类的写入实现，界面无需改动。
+@Model
+final class SavedThread {
+    @Attribute(.unique) var tid: Int
+    var title: String
+    var boardName: String?
+    var authorName: String?
+    var savedAt: Date
+
+    init(tid: Int, title: String, boardName: String? = nil,
+         authorName: String? = nil, savedAt: Date = .now) {
+        self.tid = tid
+        self.title = title
+        self.boardName = boardName
+        self.authorName = authorName
+        self.savedAt = savedAt
+    }
+
+    // MARK: - 收藏 / 取消收藏（本地操作，不修改服务器数据）
+
+    /// 切换收藏状态，返回切换后的状态（true = 已收藏）。
+    @MainActor
+    @discardableResult
+    static func toggle(tid: Int, title: String, boardName: String? = nil,
+                       authorName: String? = nil, context: ModelContext) -> Bool {
+        let descriptor = FetchDescriptor<SavedThread>(
+            predicate: #Predicate { $0.tid == tid }
+        )
+        if let existing = (try? context.fetch(descriptor))?.first {
+            context.delete(existing)
+            try? context.save()
+            return false
+        }
+        context.insert(SavedThread(tid: tid, title: title,
+                                   boardName: boardName, authorName: authorName))
+        try? context.save()
+        return true
+    }
+
+    /// 是否已收藏。
+    @MainActor
+    static func isSaved(tid: Int, context: ModelContext) -> Bool {
+        let descriptor = FetchDescriptor<SavedThread>(
+            predicate: #Predicate { $0.tid == tid }
+        )
+        return (try? context.fetch(descriptor))?.first != nil
+    }
+
+    /// 取消收藏（按 tid 删除）。
+    @MainActor
+    static func remove(tid: Int, context: ModelContext) {
+        let descriptor = FetchDescriptor<SavedThread>(
+            predicate: #Predicate { $0.tid == tid }
+        )
+        if let existing = (try? context.fetch(descriptor))?.first {
+            context.delete(existing)
+            try? context.save()
+        }
+    }
+}

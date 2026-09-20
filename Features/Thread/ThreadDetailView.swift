@@ -7,7 +7,9 @@ import SwiftData
 /// - 首帖置顶 + 回复楼层流（ScrollView + ScrollViewReader）。
 /// - 每条作者名旁「眼睛」→ 只看该作者（互斥）。
 /// - 点「回复」→ 跳最后回复 + 底部回复 Sheet；长按某楼 → 引用并弹回复 Sheet。
-/// - 操作栏图标化：回复 / 站内转发 / 收藏 / 报告。
+/// - 操作栏四图标全部做真实的事：回复 / 分享（系统分享该帖链接）/
+///   收藏（本地书签 `SavedThread`）/ 网页版（浏览器打开该帖，站内评分与举报在网页端完成）。
+/// - 楼层正文图片：点缩略图进全屏画廊，可左右滑浏览本楼层全部图片。
 /// - 本地作者屏蔽：命中 `BlockedUser` 时 `PostContent` 显示「该用户内容已隐藏」。
 struct ThreadDetailView: View {
     @StateObject private var viewModel: ThreadDetailViewModel
@@ -15,8 +17,11 @@ struct ThreadDetailView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.colorScheme) private var scheme
     @Query private var blockedUsers: [BlockedUser]
+    /// 本地收藏（书签）列表：用于星标状态实时联动。
+    @Query private var savedThreads: [SavedThread]
 
-    @State private var presentedImage: FullScreenImage?
+    /// 楼层正文多图：点缩略图进全屏画廊，可左右滑浏览本楼层全部图片。
+    @State private var presentedGallery: FullScreenGallery?
     @State private var onlyAuthorUID: Int?
     @State private var showReply = false
     @State private var replyInitial = ""
@@ -50,6 +55,23 @@ struct ThreadDetailView: View {
         Set(blockedUsers.compactMap { $0.uid })
     }
 
+    /// 该楼作者是否已被本地屏蔽。
+    private func isBlocked(_ post: Post) -> Bool {
+        guard let uid = post.authorID else { return false }
+        return blockedUIDs.contains(uid)
+    }
+
+    /// 当前帖子是否已本地收藏。
+    private var isThreadSaved: Bool {
+        savedThreads.contains { $0.tid == viewModel.thread.id }
+    }
+
+    /// 帖子网页地址（系统分享 / 浏览器打开用）。相对 `HTTPClient.baseURL` 解析，不硬编码域名。
+    private var threadWebURL: URL? {
+        URL(string: "viewthread.php?tid=\(viewModel.thread.id)",
+            relativeTo: HTTPClient.baseURL)?.absoluteURL
+    }
+
     var body: some View {
         // Demo/截图模式：不用 ScrollView，避免 UIKit UITextView 内容高度变化导致
         // SwiftUI ScrollView 滚动位置漂移，保证截图首帖（头像/作者/眼睛/操作栏）
@@ -80,8 +102,8 @@ struct ThreadDetailView: View {
                 .toolbar(.hidden, for: .tabBar)
                 .onAppear { recordReadHistory() }
                 .onDisappear { recordLastReadPost() }
-                .fullScreenCover(item: $presentedImage) { item in
-                    ImageViewer(url: item.url)
+                .fullScreenCover(item: $presentedGallery) { gallery in
+                    ImageViewer(urls: gallery.urls, startIndex: gallery.startIndex)
                 }
                 .sheet(isPresented: $showReply) {
                     ReplySheet(tid: viewModel.thread.id, initial: replyInitial) { _ in }
@@ -104,8 +126,8 @@ struct ThreadDetailView: View {
                 .task { await viewModel.loadFirstPage() }
                 .onAppear { recordReadHistory() }
                 .onDisappear { recordLastReadPost() }
-                .fullScreenCover(item: $presentedImage) { item in
-                    ImageViewer(url: item.url)
+                .fullScreenCover(item: $presentedGallery) { gallery in
+                    ImageViewer(urls: gallery.urls, startIndex: gallery.startIndex)
                 }
                 .sheet(isPresented: $showReply) {
                     ReplySheet(tid: viewModel.thread.id, initial: replyInitial) { _ in }
@@ -137,6 +159,9 @@ struct ThreadDetailView: View {
                         PostDetailRow(
                             post: post,
                             isOP: index == 0,
+                            isBlocked: isBlocked(post),
+                            threadURL: threadWebURL,
+                            isSaved: isThreadSaved,
                             onlyAuthorUID: $onlyAuthorUID,
                             onUser: { uid, name in
                                 selectedUser = uid
@@ -153,7 +178,17 @@ struct ThreadDetailView: View {
                                 replyInitial = "引用 \(p.authorName)：\n" + quotePreview(p.htmlContent)
                                 showReply = true
                             },
-                            onImageTap: { url in presentedImage = FullScreenImage(url: url) }
+                            onImagesTap: { urls, start in
+                                presentedGallery = FullScreenGallery(urls: urls, startIndex: start)
+                            },
+                            onToggleSave: {
+                                // 本地收藏（书签）：只写本地 SwiftData，不伪造服务器收藏成功。
+                                SavedThread.toggle(tid: viewModel.thread.id,
+                                                   title: viewModel.thread.title,
+                                                   boardName: viewModel.thread.typeName,
+                                                   authorName: viewModel.thread.authorName,
+                                                   context: modelContext)
+                            }
                         )
                         .id(index == 0 ? "firstPost" : "post-\(post.id)")
                         .background(Color.appBackground(scheme))

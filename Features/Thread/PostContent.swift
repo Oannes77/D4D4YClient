@@ -5,28 +5,32 @@ import SwiftUI
 /// 展示优先级：
 /// 1. 本地屏蔽（用户在 `BlockedUser` 中屏蔽了该作者）→ 显示「该用户内容已隐藏」，不渲染任何正文/图片。
 /// 2. 论坛侧屏蔽（`Post.isBlocked`，作者被禁/删）→ 显示「该帖已被论坛隐藏」。
-/// 3. 正常：HTML 正文（`HTMLContentView`）+ 提取出的图片缩略图（点击 → `onImageTap` 全屏查看）。
+/// 3. 正常：HTML 正文（`HTMLContentView`）+ 提取出的图片缩略图（点击 → `onImagesTap` 全屏查看）。
 ///
 /// 图片处理说明：
 /// `HTMLContentView` 基于 `NSAttributedString` 导入，不会真正加载远程图片，
 /// 故此处从 `htmlContent` 中正则提取 `<img src>` 单独以 `AsyncImage` 渲染，
 /// 既补全图片展示，又避免与正文重复（正文侧已剔除 `<img>` 标签）。
+/// 点任意一张进入全屏画廊，可左右滑动浏览**本楼层**的全部图片。
 struct PostContent: View {
     let post: Post
     /// 是否已被本地 `BlockedUser` 屏蔽（由父视图基于 `post.authorID` 计算后传入）。
     let isBlocked: Bool
-    /// 点击图片缩略图时的回调，参数为解析后的绝对图片 URL。
-    let onImageTap: (URL) -> Void
+    /// 点击图片缩略图时的回调：参数为「本楼层全部图片 + 被点的下标」，供全屏画廊左右滑浏览。
+    let onImagesTap: ([URL], Int) -> Void
     /// 演示模式下是否同步渲染 HTML 正文。默认 false，仅首帖等关键视图传 true。
     let syncWhenDemo: Bool
+    /// 正文里的图片（init 时算一次，避免 body 多次求值重复跑正则）。
+    private let images: [URL]
 
     @Environment(\.colorScheme) private var scheme
 
-    init(post: Post, isBlocked: Bool, onImageTap: @escaping (URL) -> Void, syncWhenDemo: Bool = false) {
+    init(post: Post, isBlocked: Bool, onImagesTap: @escaping ([URL], Int) -> Void, syncWhenDemo: Bool = false) {
         self.post = post
         self.isBlocked = isBlocked
-        self.onImageTap = onImageTap
+        self.onImagesTap = onImagesTap
         self.syncWhenDemo = syncWhenDemo
+        self.images = Self.extractImageURLs(from: post.htmlContent)
     }
 
     var body: some View {
@@ -61,14 +65,10 @@ struct PostContent: View {
 
     // MARK: - 图片缩略图
 
-    private var images: [URL] {
-        Self.extractImageURLs(from: post.htmlContent)
-    }
-
     private var imagesGrid: some View {
         LazyVGrid(columns: [GridItem(.adaptive(minimum: 110), spacing: 8)], spacing: 8) {
-            ForEach(images, id: \.self) { url in
-                AsyncImage(url: url) { phase in
+            ForEach(Array(images.enumerated()), id: \.offset) { pair in
+                AsyncImage(url: pair.element) { phase in
                     switch phase {
                     case .empty:
                         ProgressView()
@@ -87,7 +87,7 @@ struct PostContent: View {
                 .frame(maxWidth: .infinity)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
                 .clipped()
-                .onTapGesture { onImageTap(url) }
+                .onTapGesture { onImagesTap(images, pair.offset) }
             }
         }
     }

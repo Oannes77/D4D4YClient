@@ -11,13 +11,15 @@ enum ScreenshotScreen: String, CaseIterable {
     case threadReplies       // 帖子回复楼层（滚到页尾：回复流 + 分页条）
     case reply               // 回复框 Sheet
     case userCard            // 用户卡片 Sheet
-    case imageViewer         // 图片全屏预览
+    case imageViewer         // 图片全屏预览（多图画廊）
     case search              // 搜索结果
     case newPost             // 发帖页
     case boardManage         // 板块管理（置顶/收藏与排序）
     case chat                // 私信会话
     case message             // 消息（站内短信 / 系统消息）
     case profile             // 我的
+    case savedThreads        // 我的收藏（本地书签）
+    case blockedUsers        // 黑名单（本地屏蔽）
     case settings            // 设置
     case security            // 账号与安全
     case login               // 登录页
@@ -40,6 +42,10 @@ struct ScreenshotRouteView: View {
 
     @Environment(\.modelContext) private var context
     @Environment(\.colorScheme) private var scheme
+
+    /// 消息未读角标：与正式版同一口径（由 `MessageViewModel` 读收件箱后写入），
+    /// 这里不再写死 `.badge(3)`。
+    @ObservedObject private var unread = UnreadBadge.shared
 
     /// Tab 类界面的初始选中项，保证截图落在目标 Tab 上。
     @State private var tab: Int
@@ -101,7 +107,12 @@ struct ScreenshotRouteView: View {
                     UserCardSheet(userID: 1024, fallbackName: "老橡树")
                 }
         case .imageViewer:
-            ImageViewer(url: URL(string: "https://placehold.co/1200x800/534AB7/FFFFFF/png?text=4D4Y")!)
+            // 多图画廊：顶部会显示「1 / 3」页码，左右可滑（Demo 用占位图，不依赖真实网络图源）。
+            ImageViewer(urls: [
+                URL(string: "https://placehold.co/1200x800/534AB7/FFFFFF/png?text=4D4Y+1")!,
+                URL(string: "https://placehold.co/1200x800/8F86E8/FFFFFF/png?text=4D4Y+2")!,
+                URL(string: "https://placehold.co/1200x800/2E2A5C/FFFFFF/png?text=4D4Y+3")!
+            ], startIndex: 0)
         case .search:
             NavigationStack { SearchResultsView() }
         case .newPost:
@@ -110,6 +121,10 @@ struct ScreenshotRouteView: View {
             NavigationStack { BoardManageView() }
         case .chat:
             NavigationStack { MessageChatView(userID: 1024, userName: "老橡树") }
+        case .savedThreads:
+            NavigationStack { SavedThreadsView() }
+        case .blockedUsers:
+            NavigationStack { BlockedUsersView() }
         case .settings:
             NavigationStack { SettingsView() }
         case .security:
@@ -128,7 +143,7 @@ struct ScreenshotRouteView: View {
 
             MessageView()
                 .tabItem { Label("消息", systemImage: "bell") }
-                .badge(3)
+                .badge(unread.privateMessages)
                 .tag(1)
 
             ProfileView()

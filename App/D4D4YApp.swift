@@ -13,7 +13,8 @@ struct D4D4YApp: App {
                 ReadHistory.self,
                 VisitedForum.self,
                 LocalSettings.self,
-                ThreadMediaCache.self
+                ThreadMediaCache.self,
+                SavedThread.self
             )
         } catch {
             fatalError("SwiftData 容器初始化失败: \(error)")

@@ -10,8 +10,8 @@ struct PostCell: View {
     let post: Post
     /// 是否已被本地 `BlockedUser` 屏蔽（父视图基于 `post.authorID` 计算后传入）。
     let isBlocked: Bool
-    /// 点击图片缩略图时的回调。
-    let onImageTap: (URL) -> Void
+    /// 点击图片缩略图时的回调（本楼层全部图片 + 被点下标）。
+    let onImagesTap: ([URL], Int) -> Void
 
     @Environment(\.modelContext) private var modelContext
     @Environment(\.colorScheme) private var scheme
@@ -31,7 +31,7 @@ struct PostCell: View {
             PostHeader(post: post)
             Divider()
                 .background(Color.appDivider(scheme))
-            PostContent(post: post, isBlocked: isBlocked, onImageTap: onImageTap)
+            PostContent(post: post, isBlocked: isBlocked, onImagesTap: onImagesTap)
         }
         .padding(.vertical, floorPadding)
         .contextMenu { contextMenuContent }
