@@ -8,12 +8,36 @@
 	  - UIBackgroundModes: fetch                    → BGAppRefreshTask 必需
 	  - BGTaskSchedulerPermittedIdentifiers         → 必须与 Core/BackgroundRefresh.swift 的
 	                                                  taskIdentifier 完全一致，否则注册会抛异常
-	  其余键（CFBundleIdentifier / Executable / Version 等）由构建系统从构建设置注入，无需在此声明。
+
+	  ⚠️ 2026-09-20 踩坑：改用 INFOPLIST_FILE + GENERATE_INFOPLIST_FILE:NO 之后，
+	  构建系统**不再自动注入** CFBundle* 这些基础键。缺 CFBundleIdentifier 时：
+	  编译照样成功（所以 error: 摘要为空），但 UI 测试装不上 App，报
+	  「The bundle identifier for D4D4YClient.app couldn't be read」→ 0 张截图。
+	  ⇒ 下面这组基础键必须保留（值用构建设置变量展开，勿写死）。
+
 	  文件放在 Support/ 而不是 App/：Support 不在 project.yml 的 sources 里，
 	  绝对不会被当成资源重复拷进 bundle（那会触发 "Multiple commands produce Info.plist"）。
 	-->
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
 	<string>4D4Y</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UISupportedInterfaceOrientations</key>
