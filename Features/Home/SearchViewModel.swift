@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 
 /// 搜索结果视图模型（真实 `search.php`）。
 ///

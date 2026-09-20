@@ -205,7 +205,7 @@ struct HomeView: View {
 
 // MARK: - 搜索请求（navigationDestination 需要 Identifiable）
 
-private struct SearchRequest: Identifiable {
+private struct SearchRequest: Identifiable, Hashable {
     let id = UUID()
     let keyword: String
 }

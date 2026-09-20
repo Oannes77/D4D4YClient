@@ -47,8 +47,8 @@ struct ThreadImageParser {
         do {
             let doc = try SwiftSoup.parse(html)
             let firstBlock = try doc.select("div.detailcon").first()
-            let block = firstBlock ?? (try doc.select("div.replycon").first())
-            guard let block else { return nil }
+            let replyBlock = try doc.select("div.replycon").first()
+            guard let block = firstBlock ?? replyBlock else { return nil }
             var text = try block.text()
             text = text.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
                 .trimmingCharacters(in: .whitespacesAndNewlines)

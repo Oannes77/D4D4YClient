@@ -83,8 +83,8 @@ enum DiscuzFormParser {
     }
 
     private static func submitButton(in region: String) -> (name: String, value: String)? {
-        guard let r = first(#"<(?:input|button)[^>]*type=["']submit["'][^>]*>"#, in: region) else { return nil }
-        let tag = (region as NSString).substring(with: r.range)
+        guard let m = all(#"<(?:input|button)[^>]*type=["']submit["'][^>]*>"#, in: region).first else { return nil }
+        let tag = (region as NSString).substring(with: m.range)
         guard let name = attr("name", in: tag) else { return nil }
         return (name, attr("value", in: tag) ?? "")
     }
