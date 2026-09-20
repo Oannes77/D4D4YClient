@@ -4,7 +4,8 @@ import SwiftData
 /// 首页：板块主题列表（Threads 风格信息流）。
 ///
 /// 2026-09-18 框架：首页 = 板块主题列表，非 Dashboard。
-/// - 顶部板块切换条（来自 SwiftData `PinnedForum`，用户顺序），点选或**左右滑**切换板块。
+/// - 顶部板块切换条（来自 SwiftData `PinnedForum`，用户顺序）：**点击胶囊**进入该板块并刷新最近动态，
+///   **在胶囊条上左右滑**切换到上一个 / 下一个板块，滑块自动居中到当前胶囊。
 /// - 折叠搜索栏（上推隐藏 / 滚到顶出现），回车进入搜索结果页。
 /// - 帖子卡片流：标题加粗 + 正文 3 行截断 + 单图 + 附件回形针 + 全图标操作栏。
 /// - 下拉刷新 + 滚到末尾自动加载下一页（分页 URL 由页面解析给出）。
@@ -43,9 +44,12 @@ struct HomeView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                BoardChips(boards: boards, selectedID: $selectedFid) { item in
-                    select(item)
-                }
+                BoardChips(
+                    boards: boards,
+                    selectedID: $selectedFid,
+                    onSelect: { select($0) },
+                    onSwipe: { switchBoard(by: $0) }
+                )
                 CollapsibleSearch(
                     text: $searchText,
                     collapsed: searchCollapsed,
@@ -129,17 +133,6 @@ struct HomeView: View {
         .onPreferenceChange(ScrollOffsetKey.self) { y in
             searchCollapsed = y < -8
         }
-        // 板块左右滑切换（产品框架要求：板块可左右滑切换）。
-        // 只在「横向意图明显」时触发（位移 > 70pt 且明显大于纵向），不影响上下滚动。
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 30)
-                .onEnded { value in
-                    let dx = value.translation.width
-                    let dy = value.translation.height
-                    guard abs(dx) > 70, abs(dx) > abs(dy) * 1.5 else { return }
-                    switchBoard(by: dx < 0 ? 1 : -1)
-                }
-        )
     }
 
     private var feedList: some View {
@@ -222,7 +215,7 @@ struct HomeView: View {
         Task { await viewModel.selectBoard(fid: item.id, name: item.name) }
     }
 
-    /// 左右滑切换板块：`offset` 为 +1（下一个）/ -1（上一个），已经到头则不动。
+    /// 在胶囊条上左右滑：切换到上一个 / 下一个板块（到头即停，不循环）。
     private func switchBoard(by offset: Int) {
         guard let index = boards.firstIndex(where: { $0.id == selectedFid }) else { return }
         let next = index + offset

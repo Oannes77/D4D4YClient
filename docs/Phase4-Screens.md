@@ -66,7 +66,7 @@
 
 | 序号 | DemoScreen | 界面 | 等待锚点 | 默认跑 |
 |------|-----------|------|---------|--------|
-| 1 | `home` | 首页（板块可左右滑切换） | home-post-open | 全量 |
+| 1 | `home` | 首页（点胶囊进板块 / 滑胶囊条换板块） | home-post-open | 全量 |
 | 2 | `thread` | 帖子详情（首帖 + 操作栏） | detail-reply | 全量 |
 | 3 | `threadReplies` | 帖子回复楼层（滚页尾：50 楼 + 分页条） | detail-page-prev | 全量 |
 | 4 | `reply` | 回复框 Sheet | 取消 | 全量 |
