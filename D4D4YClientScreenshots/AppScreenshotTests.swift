@@ -24,19 +24,17 @@ final class AppScreenshotTests: XCTestCase {
     /// 待验收界面清单（已确认的界面不再重复截图，节省 CI 时间）。
     /// 新增/修改界面时只需在此增删一行；回归全量时把下方 `confirmedTargets` 合并进来即可。
     private let targets = [
-        // 新增界面：我的中心 —— 我的帖子（真实 my.php；Demo 用离线样例）
-        Target(screen: "myThreads",        waitElement: "我的帖子", settle: 1.2),
-        // 新增界面：我的中心 —— 好友（用户型列表，点击弹用户卡）
-        Target(screen: "myFriends",        waitElement: "好友",     settle: 1.2),
-        // 新增界面：我的中心 —— 关注（本站 Discuz! 7.2 无此栏目 → 如实说明 + 网页版出口）
-        Target(screen: "myFollows",        waitElement: "关注",     settle: 1.2),
-        // 上轮新增、待验收的两个设置页
+        // 本轮改动：回帖占位符设置页的输入框补可见边界（浅色下曾被当成静态文字）
         Target(screen: "replyPlaceholder", waitElement: "效果预览", settle: 1.0),
-        Target(screen: "pushSettings",     waitElement: "上次检查", settle: 1.0),
     ]
 
     /// 已验收通过的界面（默认不跑）。需要全量回归时，把这组拼到 `targets` 后面即可。
     private let confirmedTargets = [
+        // 2026-09-20 验收通过：我的中心四栏 + 消息推送
+        Target(screen: "myThreads",     waitElement: "我的帖子",  settle: 1.2),
+        Target(screen: "myFriends",     waitElement: "好友",     settle: 1.2),
+        Target(screen: "myFollows",     waitElement: "关注",     settle: 1.2),
+        Target(screen: "pushSettings",  waitElement: "上次检查", settle: 1.0),
         Target(screen: "home",          waitElement: "home-post-open",    settle: 1.2),
         Target(screen: "search",        waitElement: "home-post-open",    settle: 1.2),
         Target(screen: "imageViewer",   waitElement: "",                  settle: 1.0),

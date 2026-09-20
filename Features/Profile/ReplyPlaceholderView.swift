@@ -18,8 +18,19 @@ struct ReplyPlaceholderView: View {
     var body: some View {
         List {
             Section {
+                // 输入框必须有可见边界：浅色下 List 行与页面同为白色，
+                // 裸 TextField 会被当成静态文字（用户不知道可以改）。
+                // 与回复框输入区同一口径：appSurfaceSecondary 填充 + 0.5pt appBorder 描边。
                 TextField("占位符文本", text: $draft, axis: .vertical)
                     .foregroundStyle(Color.appTextPrimary(scheme))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(Color.appSurfaceSecondary(scheme))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(Color.appBorder(scheme), lineWidth: 0.5)
+                    )
                     .onSubmit { commit() }
             } header: {
                 Text("占位符")
