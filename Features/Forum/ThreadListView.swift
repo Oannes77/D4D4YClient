@@ -68,20 +68,30 @@ struct ThreadListView: View {
         }
     }
 
-    /// 已过滤被屏蔽作者的可见主题列表（供 ForEach 使用，拆分 body 表达式以通过类型检查）。
+    /// 已本地拉黑的作者 uid 集合（`BlockedUser`，纯客户端行为，与论坛侧处罚无关）。
+    private var blockedUIDs: Set<Int> {
+        Set(blockedUsers.map(\.uid))
+    }
+
+    /// 当前页全部主题。
+    ///
+    /// 注意：被拉黑作者的主题**不再直接过滤掉**——过滤会让列表「凭空少几条」，
+    /// 用户不知道发生了什么。改为由 `threadRow` 渲染成「-已拉黑-」占位，可就地取消。
     private var visibleThreads: [ForumThread] {
         guard case .loaded(let pageData) = viewModel.state else { return [] }
-        let blockedUIDs = Set(blockedUsers.map(\.uid))
-        return pageData.threads.filter { thread in
-            guard let aid = thread.authorID else { return true }
-            return !blockedUIDs.contains(aid)
-        }
+        return pageData.threads
     }
 
     /// 列表行：左侧导航 + 右侧轻量媒体标识（📷 预览首图 / 📎 含附件）+ 长按屏蔽菜单。
+    /// 作者被本地拉黑 → 整行替换成「-已拉黑-」占位（不显示标题 / 摘要，可就地取消拉黑）。
     @ViewBuilder
     private func threadRow(_ thread: ForumThread, cache: ThreadMediaCache?) -> some View {
-        HStack(alignment: .top, spacing: 12) {
+        if let aid = thread.authorID, blockedUIDs.contains(aid) {
+            BlockedPlaceholderRow(authorName: thread.authorName) {
+                BlockedUser.unblock(uid: aid, context: modelContext)
+            }
+        } else {
+            HStack(alignment: .top, spacing: 12) {
             NavigationLink(value: thread) {
                 ThreadRow(thread: thread, scheme: scheme)
             }
@@ -102,16 +112,17 @@ struct ThreadListView: View {
                         .foregroundStyle(Color.appTextTertiary(scheme))
                 }
             }
-        }
-        .contextMenu {
-            if let aid = thread.authorID {
-                if BlockedUser.isBlocked(uid: aid, context: modelContext) {
-                    Button("取消屏蔽", systemImage: "person.crop.circle.badge.xmark") {
-                        BlockedUser.unblock(uid: aid, context: modelContext)
-                    }
-                } else {
-                    Button("屏蔽作者", systemImage: "person.crop.circle.badge.xmark") {
-                        BlockedUser.block(uid: aid, username: thread.authorName, context: modelContext)
+            }
+            .contextMenu {
+                if let aid = thread.authorID {
+                    if BlockedUser.isBlocked(uid: aid, context: modelContext) {
+                        Button("取消拉黑", systemImage: "person.crop.circle.badge.xmark") {
+                            BlockedUser.unblock(uid: aid, context: modelContext)
+                        }
+                    } else {
+                        Button("拉黑作者", systemImage: "person.crop.circle.badge.xmark") {
+                            BlockedUser.block(uid: aid, username: thread.authorName, context: modelContext)
+                        }
                     }
                 }
             }

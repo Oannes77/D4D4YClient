@@ -4,12 +4,12 @@ import SwiftUI
 ///
 /// 头部：头像 + 作者名 + 「眼睛」(只看该作者) + 时间 + 楼层。
 /// 正文：复用 `PostContent`（正文 + 本楼层图片缩略图，点击进全屏画廊）。
-/// 操作栏：回复 / 分享 / 收藏 / 网页版 —— 四个都做**真实的事**，没有假按钮：
+/// 操作栏：回复 / 分享 / 收藏 / 举报 / 网页版 —— 每一个都做**真实的事**，没有假按钮：
 /// - 回复：弹回复 Sheet；
-/// - 分享：系统分享面板，分享该帖网页链接（论坛模板已整块注释掉原生「站内转发 / 分享」，
-///   故不做「假装转发成功」，改用系统分享，功能等价且真实可用）；
-/// - 收藏：本地书签（`SavedThread`），写本地 SwiftData，不伪造服务器收藏成功；
-/// - 网页版：在浏览器打开该帖，论坛原生功能（评分 / 举报 / 收藏）在网页端完成。
+/// - 分享：菜单二选一 —— 系统分享，或**站内分享给好友**（读好友列表 → 发私信配链接）；
+/// - 收藏：论坛服务器收藏（`my.php?item=favorites&type=thread`），需要登录，结果以回读确认为准；
+/// - 举报：论坛没有举报接口 → 复制该帖链接 + 私信管理员（未配置收件人时只复制并提示）；
+/// - 网页版：在浏览器打开该帖，论坛原生功能（评分等）在网页端完成。
 ///
 /// - 长按整行 → 引用该楼（弹回复 Sheet，预填引用文本）。
 /// - 点作者头像 / 名 → 用户卡。
@@ -29,6 +29,12 @@ struct PostDetailRow: View {
     var onQuote: (Post) -> Void
     var onImagesTap: ([URL], Int) -> Void
     var onToggleSave: () -> Void
+    /// 取消本地拉黑（由父视图写入 `BlockedUser`，仅本地拉黑时会出现）。
+    var onUnblock: () -> Void
+    /// 站内分享给好友（读好友列表 → 发私信）。
+    var onShareToBuddy: () -> Void
+    /// 举报该帖（复制链接 + 私信管理员）。
+    var onReport: () -> Void
 
     @Environment(\.colorScheme) private var scheme
 
@@ -75,7 +81,7 @@ struct PostDetailRow: View {
             }
 
             // 正文（含本楼层图片，点图进全屏画廊）
-            PostContent(post: post, isBlocked: isBlocked,
+            PostContent(post: post, isBlocked: isBlocked, onUnblock: onUnblock,
                         onImagesTap: onImagesTap, syncWhenDemo: isOP)
 
             actionBar
@@ -88,21 +94,30 @@ struct PostDetailRow: View {
     // MARK: - 操作栏（全图标）
 
     private var actionBar: some View {
-        HStack(spacing: 28) {
+        HStack(spacing: 22) {
             Button { onReply() } label: {
                 Image(systemName: "bubble.right")
             }
             .foregroundStyle(Color.appTextSecondary(scheme))
             .accessibilityIdentifier("post-reply")
 
-            // 分享：系统分享面板（分享该帖网页链接）
-            if let threadURL {
-                ShareLink(item: threadURL) {
-                    Image(systemName: "arrowshape.turn.up.right")
+            // 分享：菜单二选一 —— 系统分享 / 站内分享给好友（论坛的站内分享只能发给好友）
+            Menu {
+                if let threadURL {
+                    ShareLink(item: threadURL) {
+                        Label("系统分享", systemImage: "square.and.arrow.up")
+                    }
                 }
-                .foregroundStyle(Color.appTextSecondary(scheme))
-                .accessibilityIdentifier("post-share")
+                Button {
+                    onShareToBuddy()
+                } label: {
+                    Label("分享给好友", systemImage: "person.2")
+                }
+            } label: {
+                Image(systemName: "arrowshape.turn.up.right")
             }
+            .foregroundStyle(Color.appTextSecondary(scheme))
+            .accessibilityIdentifier("post-share")
 
             // 收藏：本地书签（写本地 SwiftData，不假装服务器已收藏）
             Button {
@@ -112,6 +127,15 @@ struct PostDetailRow: View {
             }
             .foregroundStyle(isSaved ? Color.appGold(scheme) : Color.appTextSecondary(scheme))
             .accessibilityIdentifier("post-save")
+
+            // 举报：论坛没有举报接口 → 复制帖子链接 + 私信管理员
+            Button {
+                onReport()
+            } label: {
+                Image(systemName: "exclamationmark.bubble")
+            }
+            .foregroundStyle(Color.appTextSecondary(scheme))
+            .accessibilityIdentifier("post-report")
 
             // 网页版：站内评分 / 举报等只在论坛网页端提供，直接打开该帖
             if let threadURL {

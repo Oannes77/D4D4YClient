@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 import Combine
 
 /// 用户卡视图模型：真实 `space.php?uid=NNN`（需登录）。
@@ -55,9 +56,27 @@ struct UserCardSheet: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.modelContext) private var modelContext
     @StateObject private var viewModel = UserCardViewModel()
     @State private var showLogin = false
     @State private var showChat = false
+    /// 本地黑名单：决定「拉黑 / 取消拉黑」按钮状态（纯客户端行为，不碰服务器）。
+    @Query private var blockedUsers: [BlockedUser]
+
+    /// 「搜贴」→ 按作者搜索结果页。
+    @State private var showAuthorSearch = false
+    /// 好友关系（真实 `my.php?item=buddylist`）。仅登录态读取；读不到就保持默认，不猜。
+    @State private var isBuddy = false
+    @State private var isBuddyBusy = false
+    /// 操作结果提示（成功 / 失败原因）。nil 时不弹。
+    @State private var actionNotice: String?
+
+    private let buddyRepository = BuddyRepository()
+
+    /// 该用户是否已被本地拉黑。
+    private var isLocallyBlocked: Bool {
+        blockedUsers.contains { $0.uid == userID }
+    }
 
     init(userID: Int, fallbackName: String = "该用户") {
         self.userID = userID
@@ -84,12 +103,28 @@ struct UserCardSheet: View {
         .padding(16)
         .presentationDetents([.height(300)])
         .presentationDragIndicator(.visible)
-        .task { await viewModel.load(uid: userID, fallbackName: fallbackName) }
+        .task {
+            await viewModel.load(uid: userID, fallbackName: fallbackName)
+            await loadBuddyState()
+        }
         .sheet(isPresented: $showLogin) { LoginView() }
         .sheet(isPresented: $showChat) {
             NavigationStack {
                 MessageChatView(userID: userID, userName: displayName)
             }
+        }
+        .sheet(isPresented: $showAuthorSearch) {
+            NavigationStack {
+                SearchResultsView(authorUID: userID, authorName: displayName)
+            }
+        }
+        .alert("提示", isPresented: Binding(
+            get: { actionNotice != nil },
+            set: { if !$0 { actionNotice = nil } }
+        )) {
+            Button("好", role: .cancel) { actionNotice = nil }
+        } message: {
+            Text(actionNotice ?? "")
         }
     }
 
@@ -198,10 +233,57 @@ struct UserCardSheet: View {
 
     private var actionRow: some View {
         HStack(spacing: 10) {
-            funcBtn("加好友", "person.badge.plus") { }
+            funcBtn(isBuddy ? "删好友" : "加好友",
+                    isBuddy ? "person.badge.minus" : "person.badge.plus") { toggleBuddy() }
             funcBtn("私信", "envelope") { showChat = true }
-            funcBtn("搜贴", "magnifyingglass") { }
-            funcBtn("拉黑", "nosign") { }
+            funcBtn("搜贴", "magnifyingglass") { showAuthorSearch = true }
+            funcBtn(isLocallyBlocked ? "取消拉黑" : "拉黑", "nosign") { toggleBlock() }
+        }
+    }
+
+    // MARK: - 好友（真实 `my.php?item=buddylist`）
+
+    /// 读取好友关系（仅登录态；Demo 模式与游客不请求，保持默认，不猜）。
+    private func loadBuddyState() async {
+        guard !DemoMode.isOn, SessionManager.shared.state.isAuthenticated else { return }
+        if case .success(let exists) = await buddyRepository.isBuddy(uid: userID) {
+            isBuddy = exists
+        }
+    }
+
+    /// 加 / 删好友。未登录 → 弹登录入口（游客无此权限）；结果一律以回读好友列表为准。
+    private func toggleBuddy() {
+        guard SessionManager.shared.state.isAuthenticated else {
+            showLogin = true
+            return
+        }
+        guard !isBuddyBusy else { return }
+        isBuddyBusy = true
+        Task {
+            let result = isBuddy ? await buddyRepository.remove(uid: userID)
+                                 : await buddyRepository.add(uid: userID)
+            isBuddyBusy = false
+            switch result {
+            case .success(let exists):
+                isBuddy = exists
+                actionNotice = exists ? "已添加好友。" : "已从好友列表移除。"
+            case .failure(let error):
+                if error == .notLoggedIn { showLogin = true }
+                actionNotice = error.localizedDescription
+            }
+        }
+    }
+
+    // MARK: - 拉黑（纯本地屏蔽）
+
+    /// 拉黑 / 取消拉黑。只写本地 `BlockedUser`，与论坛管理员的处罚无关。
+    private func toggleBlock() {
+        if isLocallyBlocked {
+            BlockedUser.unblock(uid: userID, context: modelContext)
+            actionNotice = "已取消拉黑，该用户的主帖和回帖会重新显示。"
+        } else {
+            BlockedUser.block(uid: userID, username: displayName, context: modelContext)
+            actionNotice = "已拉黑，该用户的主帖和回帖都会显示「-已拉黑-」。"
         }
     }
 

@@ -29,6 +29,16 @@ struct PostedThread: Hashable {
     let tid: Int?
 }
 
+/// 待随帖上传的附件（图片或普通文件）。
+///
+/// 附件走 `multipart/form-data` 与正文**一次性提交**：Discuz 的发帖页本身就是一个
+/// 可带文件的表单，因此不需要额外的两步上传流程。
+struct PostAttachment {
+    let fileName: String
+    let mimeType: String
+    let data: Data
+}
+
 // MARK: - PostRepository
 /// 发帖数据层（newthread）。原则与回复一致：
 /// 1. 不硬编码 POST 参数 —— 全部运行时从真实发帖页解析；
@@ -61,19 +71,22 @@ final class PostRepository {
     ///   - fid: 目标板块。
     ///   - subject: 标题；为空时由调用方先行补全（Discuz 多数版块禁止空标题）。
     ///   - message: 正文（已含自动附加的占位符）。
-    func submitNewThread(fid: Int, subject: String, message: String) async -> Result<PostedThread, PostError> {
+    func submitNewThread(fid: Int, subject: String, message: String,
+                         attachments: [PostAttachment] = []) async -> Result<PostedThread, PostError> {
         // 1) 动态加载 + 解析（绝不跳过）
         let formResult = await loadNewThreadForm(fid: fid)
         switch formResult {
         case .success(let html):
-            return await submit(withHTML: html, fid: fid, subject: subject, message: message)
+            return await submit(withHTML: html, fid: fid, subject: subject,
+                                message: message, attachments: attachments)
         case .failure(let error):
             return .failure(error)
         }
     }
 
     private func submit(withHTML html: String, fid: Int,
-                        subject: String, message: String) async -> Result<PostedThread, PostError> {
+                        subject: String, message: String,
+                        attachments: [PostAttachment]) async -> Result<PostedThread, PostError> {
         guard let region = DiscuzFormParser.formRegion(in: html, requiring: #"name=["']message["']"#) else {
             return .failure(.parseFailure("未找到发帖表单（可能非登录态或页面异常）"))
         }
@@ -92,7 +105,8 @@ final class PostRepository {
             fields["topicsubmit"] = "true"     // 兜底：Discuz 7.2 发帖按钮名
         }
 
-        // 3) POST（GBK 编码；带 Referer，模拟站内提交）
+        // 3) POST（带 Referer，模拟站内提交）
+        //    无附件 → GBK 表单编码；有附件 → multipart/form-data（字段同样 GBK 编码）。
         let baseRequest: HTTPRequest
         do {
             baseRequest = try client.request(path: form.action)
@@ -101,9 +115,24 @@ final class PostRepository {
         }
         var req = baseRequest
         req.method = .post
-        req.headers["Content-Type"] = "application/x-www-form-urlencoded"
         req.headers["Referer"] = HTTPClient.baseURL.appendingPathComponent("post.php").absoluteString
-        req.body = DiscuzFormParser.gbkFormURLEncoded(fields)
+
+        if attachments.isEmpty {
+            req.headers["Content-Type"] = "application/x-www-form-urlencoded"
+            req.body = DiscuzFormParser.gbkFormURLEncoded(fields)
+        } else {
+            let boundary = DiscuzFormParser.makeBoundary()
+            // 附件文件域字段名：优先用运行时解析到的；解析不到（Discuz 交给 JS 上传）时退回惯用名。
+            let fieldName = form.fileFieldNames.first ?? "attach[]"
+            let files = attachments.map {
+                DiscuzFormParser.MultipartFile(fieldName: fieldName,
+                                               fileName: $0.fileName,
+                                               mimeType: $0.mimeType,
+                                               data: $0.data)
+            }
+            req.headers["Content-Type"] = "multipart/form-data; boundary=\(boundary)"
+            req.body = DiscuzFormParser.multipartBody(boundary: boundary, fields: fields, files: files)
+        }
 
         do {
             let resp = try await client.sendText(req)

@@ -16,6 +16,10 @@ enum DiscuzFormParser {
         let textareaNames: [String]
         /// 提交按钮 name=value（无 name 时为 nil）
         let submitField: (name: String, value: String)?
+        /// 表单内 `<input type="file">` 的 name（按出现顺序）。附件上传用。
+        let fileFieldNames: [String]
+        /// 表单是否声明为 `multipart/form-data`。
+        let isMultipart: Bool
 
         var formhash: String? { hiddenFields["formhash"] }
         /// 正文 textarea 名（通常为 message；找不到时回退第一个 textarea）
@@ -62,7 +66,10 @@ enum DiscuzFormParser {
             action: cleanedAction,
             hiddenFields: hiddenInputs(in: region),
             textareaNames: textareaNames(in: region),
-            submitField: submitButton(in: region)
+            submitField: submitButton(in: region),
+            fileFieldNames: fileInputNames(in: region),
+            isMultipart: region.range(of: #"enctype\s*=\s*["']?multipart/form-data"#,
+                                      options: [.regularExpression, .caseInsensitive]) != nil
         )
     }
 
@@ -79,6 +86,17 @@ enum DiscuzFormParser {
     private static func textareaNames(in region: String) -> [String] {
         all(#"<textarea[^>]*\bname=["']([^"']*)["']"#, in: region).compactMap {
             (region as NSString).substring(with: $0.range(at: 1))
+        }
+    }
+
+    /// 表单内 `<input type="file">` 的 name。
+    ///
+    /// Discuz! 的发帖页可能把附件区交给 JS（SWFUpload）处理，此时解析不到 file 域；
+    /// 调用方会退回 `attach[]` 这一 Discuz 惯用字段名再试。
+    private static func fileInputNames(in region: String) -> [String] {
+        all(#"<input[^>]*type=["']file["'][^>]*>"#, in: region).compactMap { m in
+            let tag = (region as NSString).substring(with: m.range)
+            return attr("name", in: tag)
         }
     }
 
@@ -99,6 +117,56 @@ enum DiscuzFormParser {
             "\(gbkPercent($0.key, allowed: allowed))=\(gbkPercent($0.value, allowed: allowed))"
         }
         return segs.joined(separator: "&").data(using: .ascii) ?? Data()
+    }
+
+    /// multipart/form-data 里的一个文件。
+    struct MultipartFile {
+        let fieldName: String
+        let fileName: String
+        let mimeType: String
+        let data: Data
+    }
+
+    /// 生成一个 multipart 边界串。
+    static func makeBoundary() -> String {
+        "----D4D4YClientBoundary" + UUID().uuidString.replacingOccurrences(of: "-", with: "")
+    }
+
+    /// 构造 multipart/form-data 请求体：文本字段（**GBK 编码**）+ 文件。
+    ///
+    /// 为什么文本字段用 GBK：论坛 `charset=gbk`，UTF-8 提交中文会在服务端存成乱码（Sprint 7C 已验证）。
+    /// 文件内容按二进制原样写入，不做任何编码转换。
+    static func multipartBody(boundary: String,
+                              fields: [String: String],
+                              files: [MultipartFile]) -> Data {
+        let gbk = String.Encoding(rawValue: 2147485234)
+        var body = Data()
+
+        func appendASCII(_ text: String) {
+            body.append(text.data(using: .utf8) ?? Data())
+        }
+
+        for (name, value) in fields.sorted(by: { $0.key < $1.key }) {
+            appendASCII("--\(boundary)\r\n")
+            appendASCII("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n")
+            body.append(value.data(using: gbk) ?? value.data(using: .utf8) ?? Data())
+            appendASCII("\r\n")
+        }
+
+        for file in files {
+            appendASCII("--\(boundary)\r\n")
+            // 文件名同样用 GBK，避免中文文件名在服务端变乱码。
+            let nameData = file.fileName.data(using: gbk) ?? file.fileName.data(using: .utf8) ?? Data()
+            appendASCII("Content-Disposition: form-data; name=\"\(file.fieldName)\"; filename=\"")
+            body.append(nameData)
+            appendASCII("\"\r\n")
+            appendASCII("Content-Type: \(file.mimeType)\r\n\r\n")
+            body.append(file.data)
+            appendASCII("\r\n")
+        }
+
+        appendASCII("--\(boundary)--\r\n")
+        return body
     }
 
     static func gbkPercent(_ s: String, allowed: CharacterSet) -> String {

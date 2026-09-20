@@ -284,14 +284,13 @@ final class ThreadMediaCache {
     }
 }
 
-/// 本地收藏（书签）。
+/// 【已弃用】本地收藏（书签）。
 ///
-/// **为什么是本地收藏而不是论坛收藏**：4D4Y 的 Discuz 模板在帖子页把「收藏 / 分享」
-/// 入口整块 HTML 注释掉了（真实页面里 `<a … onclick="showDialog($('favoritewin')…)">收藏</a>`
-/// 位于 `<!-- … -->` 之内），`misc.php?action=favorite` 对未登录请求返回空响应，
-/// 无法在客户端验证。因此这里**不做「假装收藏到论坛」**：
-/// 星标只写本地 SwiftData，纯本地书签，不修改任何服务器数据。
-/// 若将来论坛恢复收藏接口，只需替换本类的写入实现，界面无需改动。
+/// ⚠️ **收藏已改为论坛服务器收藏**（`my.php?item=favorites&type=thread`，见 `FavoriteRepository` /
+/// `FavoritesStore`）：用户的收藏会真正同步到 4D4Y 账号里，不再只存在本机。
+///
+/// 本类**只为保持 SwiftData schema 稳定而保留**（直接删掉模型定义会让已有安装的
+/// 本地数据库需要迁移），界面与业务逻辑均不再读写它。新代码请一律使用 `FavoritesStore`。
 @Model
 final class SavedThread {
     @Attribute(.unique) var tid: Int

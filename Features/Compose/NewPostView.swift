@@ -1,5 +1,8 @@
 import SwiftUI
 import SwiftData
+import UIKit
+import PhotosUI
+import UniformTypeIdentifiers
 
 /// 发帖页（首页右下角紫色 FAB 唤起）。
 ///
@@ -22,6 +25,15 @@ struct NewPostView: View {
     @State private var notice: String?
     @State private var postedTID: Int?
     @State private var didSucceed = false
+    /// 待上传的附件（图片 / 其它文件）。提交时与正文一起 multipart 上传。
+    @State private var attachments: [DraftAttachment] = []
+    /// `PhotosPicker` 当前选中项。
+    @State private var photoItems: [PhotosPickerItem] = []
+    /// 是否展示系统「选择文件」。
+    @State private var showFileImporter = false
+
+    /// 单帖最多附件数（与界面提示保持一致）。
+    static let maxAttachments = 5
 
     /// 自动附加的占位符（规避最短字数凑字规则），与正文隔一个空行提交。
     /// 取值来自本地偏好（我的 → 回帖占位符），与回复框共用同一份设置。
@@ -102,11 +114,25 @@ struct NewPostView: View {
                         .foregroundStyle(Color.appTextTertiary(scheme))
                     }
 
-                    // 附件（Discuz 附件上传需 multipart 与附件 aid 流程，暂未接入）
-                    HStack(spacing: 16) {
-                        attachButton("photo", "图片")
-                        attachButton("paperclip", "附件")
-                        Spacer()
+                    // 附件：图片走 PhotosPicker，其它文件走系统文件选择器。
+                    // 提交时与正文一起以 multipart/form-data 一次性 POST（Discuz 发帖页本身即可带文件）。
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(spacing: 12) {
+                            PhotosPicker(selection: $photoItems,
+                                         maxSelectionCount: Self.maxAttachments,
+                                         matching: .images) {
+                                attachLabel("photo", "图片")
+                            }
+                            Button { showFileImporter = true } label: {
+                                attachLabel("paperclip", "附件")
+                            }
+                            .buttonStyle(.plain)
+                            Spacer()
+                        }
+
+                        if !attachments.isEmpty {
+                            attachmentStrip
+                        }
                     }
                 }
                 .padding(16)
@@ -139,6 +165,14 @@ struct NewPostView: View {
             } message: {
                 Text(notice ?? "")
             }
+            .onChange(of: photoItems) { _, items in
+                Task { await loadPickedPhotos(items) }
+            }
+            .fileImporter(isPresented: $showFileImporter,
+                          allowedContentTypes: [.item],
+                          allowsMultipleSelection: true) { result in
+                handleFileImport(result)
+            }
         }
     }
 
@@ -162,9 +196,13 @@ struct NewPostView: View {
         }
 
         isPosting = true
+        // 附件转成数据层结构（正文与文件在同一次 multipart 请求里提交）。
+        let payload = attachments.map {
+            PostAttachment(fileName: $0.fileName, mimeType: $0.mimeType, data: $0.data)
+        }
         Task {
             let result = await PostRepository().submitNewThread(
-                fid: fid, subject: finalSubject, message: body
+                fid: fid, subject: finalSubject, message: body, attachments: payload
             )
             isPosting = false
             switch result {
@@ -192,19 +230,121 @@ struct NewPostView: View {
             .foregroundStyle(Color.appTextSecondary(scheme))
     }
 
-    private func attachButton(_ icon: String, _ title: String) -> some View {
-        Button {
-            notice = "图片 / 附件上传尚未接入（Discuz 附件需 multipart 上传流程）"
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: icon)
-                Text(title).font(.subheadline)
+    /// 附件按钮的**外观**：图片按钮包在 `PhotosPicker` 里、附件按钮包在 `Button` 里，
+    /// 所以这里只返回外观，由调用方决定怎么包。
+    private func attachLabel(_ icon: String, _ title: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+            Text(title).font(.subheadline)
+        }
+        .foregroundStyle(Color.appPrimary(scheme))
+        .padding(.horizontal, 14)
+        .padding(.vertical, 9)
+        .background(Color.appSurfaceSecondary(scheme))
+        .cornerRadius(10)
+    }
+
+    /// 已选附件条（缩略图 + 单个移除）。
+    private var attachmentStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 12) {
+                ForEach(attachments) { item in
+                    ZStack(alignment: .topTrailing) {
+                        if let image = item.thumbnail {
+                            Image(uiImage: image)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 72, height: 72)
+                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                        } else {
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(Color.appSurfaceSecondary(scheme))
+                                .frame(width: 72, height: 72)
+                                .overlay {
+                                    Image(systemName: "doc")
+                                        .foregroundStyle(Color.appTextSecondary(scheme))
+                                }
+                        }
+
+                        Button {
+                            attachments.removeAll { $0.id == item.id }
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.body)
+                                .foregroundStyle(Color.appTextSecondary(scheme))
+                                .background(Color.appBackground(scheme).clipShape(Circle()))
+                        }
+                        .buttonStyle(.plain)
+                        .offset(x: 6, y: -6)
+                    }
+                }
+
+                Text("共 \(attachments.count) / \(Self.maxAttachments) 个附件")
+                    .font(.caption2)
+                    .foregroundStyle(Color.appTextTertiary(scheme))
             }
-            .foregroundStyle(Color.appPrimary(scheme))
-            .padding(.horizontal, 14)
-            .padding(.vertical, 9)
-            .background(Color.appSurfaceSecondary(scheme))
-            .cornerRadius(10)
+            .padding(.vertical, 6)
         }
     }
+
+    // MARK: - 附件读取
+
+    /// 读取 PhotosPicker 选中的图片。
+    private func loadPickedPhotos(_ items: [PhotosPickerItem]) async {
+        guard !items.isEmpty else { return }
+        var loaded: [DraftAttachment] = []
+        for (index, item) in items.prefix(Self.maxAttachments).enumerated() {
+            guard let data = try? await item.loadTransferable(type: Data.self) else { continue }
+            let type = item.supportedContentTypes.first
+            let ext = type?.preferredFilenameExtension ?? "jpg"
+            let mime = type?.preferredMIMEType ?? "image/jpeg"
+            let stamp = UUID().uuidString.prefix(6)
+            loaded.append(DraftAttachment(fileName: "photo-\(index + 1)-\(stamp).\(ext)",
+                                          mimeType: mime,
+                                          data: data,
+                                          thumbnail: UIImage(data: data)))
+        }
+        attachments = Array(loaded.prefix(Self.maxAttachments))
+    }
+
+    /// 读取系统文件选择器选中的文件。
+    private func handleFileImport(_ result: Result<[URL], Error>) {
+        guard case .success(let urls) = result else { return }
+        var loaded: [DraftAttachment] = []
+        for url in urls.prefix(Self.maxAttachments) {
+            let scoped = url.startAccessingSecurityScopedResource()
+            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+            guard let data = try? Data(contentsOf: url) else { continue }
+            loaded.append(DraftAttachment(fileName: url.lastPathComponent,
+                                          mimeType: Self.mimeType(for: url),
+                                          data: data,
+                                          thumbnail: UIImage(data: data)))
+        }
+        attachments = Array((attachments + loaded).prefix(Self.maxAttachments))
+    }
+
+    /// 按扩展名推断 MIME（Discuz 会据此决定是否当图片处理）。
+    private static func mimeType(for url: URL) -> String {
+        switch url.pathExtension.lowercased() {
+        case "jpg", "jpeg": return "image/jpeg"
+        case "png":         return "image/png"
+        case "gif":         return "image/gif"
+        case "heic":        return "image/heic"
+        case "webp":        return "image/webp"
+        case "pdf":         return "application/pdf"
+        case "zip":         return "application/zip"
+        case "txt":         return "text/plain"
+        default:            return "application/octet-stream"
+        }
+    }
+}
+
+/// 发帖页里待上传的一个附件（还没提交，仍在内存里）。
+private struct DraftAttachment: Identifiable {
+    let id = UUID()
+    let fileName: String
+    let mimeType: String
+    let data: Data
+    /// 图片缩略图；非图片为 nil（界面显示通用文件图标）。
+    let thumbnail: UIImage?
 }

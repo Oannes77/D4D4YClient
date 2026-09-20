@@ -84,13 +84,14 @@ enum DemoData {
             context.insert(LocalSettings())
         }
 
-        // 本地收藏样例（我的 → 收藏）：Demo 下预置两条，便于截图验收列表。
-        for entry in savedThreadSamples where !SavedThread.isSaved(tid: entry.tid, context: context) {
-            context.insert(SavedThread(tid: entry.tid, title: entry.title,
-                                       boardName: entry.board, authorName: entry.author))
-        }
+        // 收藏改为**论坛服务器收藏**（`my.php?item=favorites&type=thread`），
+        // Demo 下的样例列表由 `FavoritesStore.refresh()` 通过 `favoritesDemo()` 提供，
+        // 因此这里不再往本地 `SavedThread` 写任何数据。
         // 黑名单样例（我的 → 黑名单）：仅本机生效，演示数据不涉及真实用户。
         BlockedUser.block(uid: 9527, username: "灌水机器人", context: context)
+        // 再屏蔽一位 **demo 主题流里真实存在** 的作者，这样首页 / 板块列表
+        // 能直接看到「-已拉黑-」占位的实际效果（用于截图验收）。
+        BlockedUser.block(uid: 888, username: "Discovery控", context: context)
         try? context.save()
     }
 
@@ -99,6 +100,16 @@ enum DemoData {
         (188120, "PETG 打印温度到底设多少？总拉丝", "Discovery", "Kepler"),
         (190455, "收了台 Palm Treo 650，键盘手感绝了", "Discovery", "Discovery控")
     ]
+
+    /// 演示用「服务器收藏」列表（离线样例，仅 Demo / 截图模式使用）。
+    ///
+    /// 注意：这是**演示数据**，只在 `DemoMode.isOn` 时由 `FavoritesStore` 使用；
+    /// 正式运行时收藏一律来自论坛服务器（`my.php?item=favorites&type=thread`）。
+    static func favoritesDemo() -> [FavoriteItem] {
+        savedThreadSamples.map {
+            FavoriteItem(tid: $0.tid, title: $0.title, detail: "\($0.board) · \($0.author)")
+        }
+    }
 
     /// 为帖子列表行注入 📷 / 📎 媒体标识（跳过网络检测，直接按 tid 标记）。
     @MainActor

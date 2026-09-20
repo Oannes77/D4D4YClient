@@ -16,7 +16,10 @@ struct HomeView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \PinnedForum.sortOrder) private var pinned: [PinnedForum]
     /// 本地收藏（书签）：列表行星标状态与详情页共用同一份数据。
-    @Query private var savedThreads: [SavedThread]
+    /// 收藏状态（论坛服务器真源 `my.php?item=favorites`，登录后可用）。
+    @ObservedObject private var favorites = FavoritesStore.shared
+    /// 本地已拉黑作者（纯客户端行为，与论坛侧处罚无关）。
+    @Query private var blockedUsers: [BlockedUser]
     @StateObject private var viewModel = HomeViewModel()
 
     @State private var selectedFid: Int = 2
@@ -32,6 +35,10 @@ struct HomeView: View {
     @State private var selectedUserName = ""
     @State private var showUserCard = false
     @State private var showCompose = false
+    /// 收藏需要登录时弹出的登录页。
+    @State private var showLogin = false
+    /// 收藏结果提示（失败原因）。
+    @State private var saveNotice: String?
 
     /// 首页板块：用户固定的板块（按 sortOrder）；一个都没有时回落默认三个。
     private var boards: [BoardChipItem] {
@@ -89,8 +96,20 @@ struct HomeView: View {
             .sheet(isPresented: $showCompose) {
                 NewPostView(defaultFid: selectedFid)
             }
+            .sheet(isPresented: $showLogin) { LoginView() }
+            .alert("提示", isPresented: Binding(
+                get: { saveNotice != nil },
+                set: { if !$0 { saveNotice = nil } }
+            )) {
+                Button("好", role: .cancel) { saveNotice = nil }
+            } message: {
+                Text(saveNotice ?? "")
+            }
         }
-        .task { await bootstrap() }
+        .task {
+            await bootstrap()
+            await favorites.refresh()
+        }
         .refreshable {
             guard !DemoMode.isOn else { return }
             await viewModel.refresh()
@@ -138,19 +157,28 @@ struct HomeView: View {
     private var feedList: some View {
         LazyVStack(spacing: 0) {
             ForEach(feed) { item in
-                PostRow(
-                    item: item,
-                    onOpen: { selectedThread = item },
-                    onReply: { selectedThread = item; jumpToLast = true },
-                    onUser: { uid, name in
-                        selectedUser = uid
-                        selectedUserName = name
-                        showUserCard = true
-                    },
-                    isSaved: savedIDs.contains(item.id),
-                    threadURL: Self.threadURL(for: item.id),
-                    onToggleSave: { toggleSave(item) }
-                )
+                Group {
+                    if let uid = item.authorID, blockedUIDs.contains(uid) {
+                        // 本地拉黑：主题行替换为占位，可就地取消（不显示标题 / 摘要）。
+                        BlockedPlaceholderRow(authorName: item.authorName) {
+                            BlockedUser.unblock(uid: uid, context: modelContext)
+                        }
+                    } else {
+                        PostRow(
+                            item: item,
+                            onOpen: { selectedThread = item },
+                            onReply: { selectedThread = item; jumpToLast = true },
+                            onUser: { uid, name in
+                                selectedUser = uid
+                                selectedUserName = name
+                                showUserCard = true
+                            },
+                            isSaved: savedIDs.contains(item.id),
+                            threadURL: Self.threadURL(for: item.id),
+                            onToggleSave: { toggleSave(item) }
+                        )
+                    }
+                }
                 .background(Color.appBackground(scheme))
                 .onAppear {
                     guard !DemoMode.isOn else { return }
@@ -231,22 +259,30 @@ struct HomeView: View {
 
     private static let defaultBoards: [BoardChipItem] = ForumBoards.defaults
 
-    // MARK: - 本地收藏与分享
+    // MARK: - 收藏与拉黑
 
-    private var savedIDs: Set<Int> { Set(savedThreads.map(\.tid)) }
+    /// 已收藏的 tid（服务器收藏）。
+    private var savedIDs: Set<Int> { favorites.tids }
+
+    /// 本地已拉黑作者的 uid 集合（`BlockedUser`）。
+    private var blockedUIDs: Set<Int> { Set(blockedUsers.map(\.uid)) }
 
     /// 帖子网页地址：由 tid 现算，指向论坛本站（系统分享用）。
     private static func threadURL(for tid: Int) -> URL? {
         HTTPClient.absoluteURL(path: "viewthread.php?tid=\(tid)")
     }
 
-    /// 切换本地收藏（只写本机 SwiftData，不伪造服务器收藏成功）。
+    /// 切换收藏：写论坛服务器（需要登录），结果以回读确认为准。
     private func toggleSave(_ item: HomeThreadItem) {
-        SavedThread.toggle(tid: item.id,
-                           title: item.title,
-                           boardName: item.boardName.isEmpty ? nil : item.boardName,
-                           authorName: item.authorName,
-                           context: modelContext)
+        guard DemoMode.isOn || SessionManager.shared.state.isAuthenticated else {
+            showLogin = true
+            return
+        }
+        Task {
+            if await favorites.toggle(tid: item.id) == nil {
+                saveNotice = favorites.lastError ?? "收藏未能确认，请稍后在「我的 → 收藏」里核对。"
+            }
+        }
     }
 }
 

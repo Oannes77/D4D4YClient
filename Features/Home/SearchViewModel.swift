@@ -37,6 +37,19 @@ final class SearchViewModel: ObservableObject {
         }
     }
 
+    /// 按作者搜索（用户卡「搜贴」）。
+    func search(authorUID: Int) async {
+        state = .searching
+        switch await repository.search(authorUID: authorUID) {
+        case .success(let threads):
+            items = threads.map { Self.item(from: $0) }
+            state = items.isEmpty ? .failed("没有搜到该用户的主题") : .done
+        case .failure(let error):
+            items = []
+            state = .failed(error.localizedDescription)
+        }
+    }
+
     private static func item(from thread: ForumThread) -> HomeThreadItem {
         HomeThreadItem(
             id: thread.id,

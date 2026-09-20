@@ -22,6 +22,7 @@ final class PreferenceStore: ObservableObject {
         static let showPostContent  = "pref.showPostContent"
         static let pushMinutes      = "pref.pushMinutes"
         static let lastPushCheckAt  = "pref.lastPushCheckAt"
+        static let reportAdminUID   = "pref.reportAdminUID"
     }
 
     /// 回帖 / 发帖时**自动附加**的占位符：与正文隔一空行，不显示在输入框内。
@@ -50,6 +51,14 @@ final class PreferenceStore: ObservableObject {
         didSet { defaults.set(lastPushCheckAt, forKey: Key.lastPushCheckAt) }
     }
 
+    /// 举报私信的收件人 uid（`0` = 尚未设置）。
+    ///
+    /// 论坛没有原生举报接口，客户端采用「复制该帖链接 + 私信管理员」的方式。
+    /// 未设置收件人时，举报只复制链接并提示用户自行发送 —— **不假装已发出**。
+    @Published var reportAdminUID: Int {
+        didSet { defaults.set(reportAdminUID, forKey: Key.reportAdminUID) }
+    }
+
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         // 注意：初始化期间不会触发 didSet，故不会写回 UserDefaults。
@@ -58,6 +67,7 @@ final class PreferenceStore: ObservableObject {
         self.showPostContent = defaults.object(forKey: Key.showPostContent) as? Bool ?? true
         self.pushFrequencyMinutes = defaults.integer(forKey: Key.pushMinutes)
         self.lastPushCheckAt = defaults.object(forKey: Key.lastPushCheckAt) as? Date
+        self.reportAdminUID = defaults.integer(forKey: Key.reportAdminUID)
     }
 
     // MARK: - 展示用文案

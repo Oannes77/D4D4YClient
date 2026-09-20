@@ -24,8 +24,19 @@ final class AppScreenshotTests: XCTestCase {
     /// 待验收界面清单（已确认的界面不再重复截图，节省 CI 时间）。
     /// 新增/修改界面时只需在此增删一行；回归全量时把下方 `confirmedTargets` 合并进来即可。
     private let targets = [
-        // 本轮改动：回帖占位符设置页的输入框补可见边界（浅色下曾被当成静态文字）
-        Target(screen: "replyPlaceholder", waitElement: "效果预览", settle: 1.0),
+        // Sprint 16 本轮改动：
+        // ① 首页：被拉黑作者的主题显示「-已拉黑-」占位（Demo 已屏蔽 demo 流中的一位作者）
+        Target(screen: "home",         waitElement: "home-post-open", settle: 1.2),
+        // ② 详情页操作栏：分享改为菜单（系统分享 / 分享给好友）+ 新增「举报」
+        Target(screen: "thread",       waitElement: "detail-reply",   settle: 1.2),
+        // ③ 用户卡：加好友 / 搜贴 / 拉黑 三键真实化（不再是空按钮）
+        Target(screen: "userCard",     waitElement: "加好友",          settle: 1.2),
+        // ④ 发帖页：图片 / 附件选择与预览条
+        Target(screen: "newPost",      waitElement: "发布",            settle: 1.2),
+        // ⑤ 我的收藏：改为论坛服务器收藏列表
+        Target(screen: "savedThreads", waitElement: "我的收藏",        settle: 1.2),
+        // ⑥ 上一轮改动、尚未验收：回帖占位符输入框补可见边界
+        Target(screen: "replyPlaceholder", waitElement: "效果预览",     settle: 1.0),
     ]
 
     /// 已验收通过的界面（默认不跑）。需要全量回归时，把这组拼到 `targets` 后面即可。

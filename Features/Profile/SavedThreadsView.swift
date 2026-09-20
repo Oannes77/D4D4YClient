@@ -1,45 +1,76 @@
 import SwiftUI
 import SwiftData
 
-/// 我的收藏（本地书签）。
+/// 我的收藏（**论坛服务器上的收藏**：`my.php?item=favorites&type=thread`）。
 ///
-/// 数据源是本地 `SavedThread`：用户在**帖子详情点 ☆** 时写入。
-/// 说明：4D4Y 的 Discuz 模板已把帖子页的收藏入口整块注释掉，服务端收藏接口无法验证，
-/// 因此客户端不做「假装收藏到论坛」，收藏一律为**本地书签**（只写本机 SwiftData）。
-/// 这里展示的只可能是用户自己在本机收藏过的帖子，绝不编造内容。
+/// 收藏是服务器数据，所以**需要登录**：未登录时给登录入口，不用本地列表假装。
+/// 三种状态严格区分：真的没有收藏 / 需要登录 / 读不出来（结构变化或网络问题）。
 struct SavedThreadsView: View {
-    @Environment(\.modelContext) private var context
     @Environment(\.colorScheme) private var scheme
-    @Query(sort: \SavedThread.savedAt, order: .reverse) private var saved: [SavedThread]
+    @ObservedObject private var favorites = FavoritesStore.shared
+
+    @State private var isLoggedIn = SessionManager.shared.state.isAuthenticated
+    @State private var showLogin = false
+    @State private var loadError: String?
 
     var body: some View {
         Group {
-            if saved.isEmpty {
-                emptyState
+            if !isLoggedIn && !DemoMode.isOn {
+                loginPrompt
+            } else if favorites.items.isEmpty, let loadError {
+                messageState(icon: "exclamationmark.triangle",
+                             title: "读不出收藏列表", detail: loadError)
+            } else if favorites.items.isEmpty {
+                messageState(icon: "star",
+                             title: "还没有收藏的帖子",
+                             detail: "在帖子详情页点 ☆ 即可收藏，收藏会同步到你的 4D4Y 账号。")
             } else {
-                List {
-                    ForEach(saved) { item in
-                        NavigationLink {
-                            ThreadDetailView(tid: item.tid, title: item.title)
-                        } label: {
-                            row(item)
-                        }
-                    }
-                    .onDelete(perform: delete)
-                }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
+                list
             }
         }
         .background(Color.appBackground(scheme))
         .navigationTitle("我的收藏")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
+        .task {
+            isLoggedIn = DemoMode.isOn || SessionManager.shared.state.isAuthenticated
+            await favorites.refresh()
+            loadError = favorites.lastError
+        }
+        .refreshable {
+            await favorites.refresh()
+            loadError = favorites.lastError
+        }
+        .sheet(isPresented: $showLogin) { LoginView() }
     }
 
-    // MARK: - 行
+    // MARK: - 列表
 
-    private func row(_ item: SavedThread) -> some View {
+    private var list: some View {
+        List {
+            ForEach(favorites.items) { item in
+                NavigationLink {
+                    ThreadDetailView(tid: item.tid, title: item.title)
+                } label: {
+                    row(item)
+                }
+                .swipeActions(edge: .trailing) {
+                    Button(role: .destructive) {
+                        Task {
+                            await favorites.toggle(tid: item.tid)
+                            loadError = favorites.lastError
+                        }
+                    } label: {
+                        Label("取消收藏", systemImage: "star.slash")
+                    }
+                }
+            }
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+    }
+
+    private func row(_ item: FavoriteItem) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(item.title)
                 .font(.subheadline).fontWeight(.medium)
@@ -48,13 +79,9 @@ struct SavedThreadsView: View {
                 .multilineTextAlignment(.leading)
 
             HStack(spacing: 6) {
-                if let board = item.boardName, !board.isEmpty {
-                    Text(board)
+                if !item.detail.isEmpty {
+                    Text(item.detail)
                 }
-                if let author = item.authorName, !author.isEmpty {
-                    Text(author)
-                }
-                Text(RelativeDateText.friendly(item.savedAt))
                 Spacer()
                 Image(systemName: "star.fill")
                     .foregroundStyle(Color.appGold(scheme))
@@ -65,29 +92,43 @@ struct SavedThreadsView: View {
         .padding(.vertical, 4)
     }
 
-    private var emptyState: some View {
-        VStack(spacing: 10) {
-            Image(systemName: "star")
+    // MARK: - 状态
+
+    private var loginPrompt: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "person.crop.circle.badge.exclamationmark")
                 .font(.largeTitle)
                 .foregroundStyle(Color.appTextTertiary(scheme))
-            Text("还没有收藏的帖子")
+            Text("收藏需要登录")
                 .font(.subheadline)
                 .foregroundStyle(Color.appTextSecondary(scheme))
-            Text("在帖子详情页点 ☆ 即可收藏到这里（收藏只保存在本机）")
+            Text("登录后这里会显示你 4D4Y 账号里的收藏帖子。")
+                .font(.caption)
+                .multilineTextAlignment(.center)
+                .foregroundStyle(Color.appTextTertiary(scheme))
+            Button("去登录") { showLogin = true }
+                .font(.subheadline)
+                .foregroundStyle(Color.appPrimary(scheme))
+        }
+        .padding(32)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func messageState(icon: String, title: String, detail: String) -> some View {
+        VStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.largeTitle)
+                .foregroundStyle(Color.appTextTertiary(scheme))
+            Text(title)
+                .font(.subheadline)
+                .foregroundStyle(Color.appTextSecondary(scheme))
+            Text(detail)
                 .font(.caption)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(Color.appTextTertiary(scheme))
         }
         .padding(32)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    // MARK: - 删除
-
-    private func delete(at offsets: IndexSet) {
-        for index in offsets where saved.indices.contains(index) {
-            SavedThread.remove(tid: saved[index].tid, context: context)
-        }
     }
 }
 

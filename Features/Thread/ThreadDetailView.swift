@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import UIKit
 
 /// 帖子详情（真实数据：viewthread.php?tid=xx）。
 ///
@@ -8,7 +9,7 @@ import SwiftData
 /// - 每条作者名旁「眼睛」→ 只看该作者（互斥）。
 /// - 点「回复」→ 跳最后回复 + 底部回复 Sheet；长按某楼 → 引用并弹回复 Sheet。
 /// - 操作栏四图标全部做真实的事：回复 / 分享（系统分享该帖链接）/
-///   收藏（本地书签 `SavedThread`）/ 网页版（浏览器打开该帖，站内评分与举报在网页端完成）。
+///   收藏（论坛服务器收藏 `my.php?item=favorites`）/ 举报（复制链接 + 私信管理员）/ 网页版。
 /// - 楼层正文图片：点缩略图进全屏画廊，可左右滑浏览本楼层全部图片。
 /// - 本地作者屏蔽：命中 `BlockedUser` 时 `PostContent` 显示「该用户内容已隐藏」。
 struct ThreadDetailView: View {
@@ -18,7 +19,8 @@ struct ThreadDetailView: View {
     @Environment(\.colorScheme) private var scheme
     @Query private var blockedUsers: [BlockedUser]
     /// 本地收藏（书签）列表：用于星标状态实时联动。
-    @Query private var savedThreads: [SavedThread]
+    /// 收藏状态：来自论坛服务器（`my.php?item=favorites&type=thread`），登录后可用。
+    @ObservedObject private var favorites = FavoritesStore.shared
 
     /// 楼层正文多图：点缩略图进全屏画廊，可左右滑浏览本楼层全部图片。
     @State private var presentedGallery: FullScreenGallery?
@@ -30,6 +32,13 @@ struct ThreadDetailView: View {
     @State private var selectedUserName = ""
     @State private var showUserCard = false
     @State private var jumpToLast = false
+    /// 「分享给好友」sheet（读好友列表 → 发私信带链接）。
+    @State private var showShareToBuddy = false
+    /// 举报：复制链接后若已配置收件人，直接打开给管理员的私信。
+    @State private var showReportChat = false
+    @State private var reportAdminUID = 0
+    /// 页面级操作提示（举报 / 收藏的失败原因等）。
+    @State private var actionNotice: String?
 
     private let forumID: Int?
 
@@ -63,7 +72,7 @@ struct ThreadDetailView: View {
 
     /// 当前帖子是否已本地收藏。
     private var isThreadSaved: Bool {
-        savedThreads.contains { $0.tid == viewModel.thread.id }
+        favorites.contains(viewModel.thread.id)
     }
 
     /// 帖子网页地址（系统分享 / 浏览器打开用）。相对 `HTTPClient.baseURL` 解析，不硬编码域名。
@@ -87,6 +96,7 @@ struct ThreadDetailView: View {
                 .scrollContentBackground(.hidden)
                 .background(Color.appBackground(scheme))
                 .task {
+                    await favorites.refresh()
                     await viewModel.loadDemo()
                     // 截图「回复楼层」目标：加载完成后滚到页尾，
                     // 让 50 楼回复流与分页条出现在截图里。
@@ -111,6 +121,24 @@ struct ThreadDetailView: View {
                 .sheet(isPresented: $showUserCard) {
                     if let uid = selectedUser { UserCardSheet(userID: uid, fallbackName: selectedUserName) }
                 }
+                .sheet(isPresented: $showShareToBuddy) {
+                    if let url = threadWebURL {
+                        ShareToBuddySheet(threadURL: url, threadTitle: viewModel.thread.title)
+                    }
+                }
+                .sheet(isPresented: $showReportChat) {
+                    NavigationStack {
+                        MessageChatView(userID: reportAdminUID, userName: "管理员")
+                    }
+                }
+                .alert("提示", isPresented: Binding(
+                    get: { actionNotice != nil },
+                    set: { if !$0 { actionNotice = nil } }
+                )) {
+                    Button("好", role: .cancel) { actionNotice = nil }
+                } message: {
+                    Text(actionNotice ?? "")
+                }
         } else {
             ScrollViewReader { proxy in
                 ScrollView {
@@ -123,7 +151,10 @@ struct ThreadDetailView: View {
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar { replyToolbarItem() }
                 .toolbar(.hidden, for: .tabBar)
-                .task { await viewModel.loadFirstPage() }
+                .task {
+                    await viewModel.loadFirstPage()
+                    await favorites.refresh()
+                }
                 .onAppear { recordReadHistory() }
                 .onDisappear { recordLastReadPost() }
                 .fullScreenCover(item: $presentedGallery) { gallery in
@@ -134,6 +165,24 @@ struct ThreadDetailView: View {
                 }
                 .sheet(isPresented: $showUserCard) {
                     if let uid = selectedUser { UserCardSheet(userID: uid, fallbackName: selectedUserName) }
+                }
+                .sheet(isPresented: $showShareToBuddy) {
+                    if let url = threadWebURL {
+                        ShareToBuddySheet(threadURL: url, threadTitle: viewModel.thread.title)
+                    }
+                }
+                .sheet(isPresented: $showReportChat) {
+                    NavigationStack {
+                        MessageChatView(userID: reportAdminUID, userName: "管理员")
+                    }
+                }
+                .alert("提示", isPresented: Binding(
+                    get: { actionNotice != nil },
+                    set: { if !$0 { actionNotice = nil } }
+                )) {
+                    Button("好", role: .cancel) { actionNotice = nil }
+                } message: {
+                    Text(actionNotice ?? "")
                 }
             }
         }
@@ -181,14 +230,15 @@ struct ThreadDetailView: View {
                             onImagesTap: { urls, start in
                                 presentedGallery = FullScreenGallery(urls: urls, startIndex: start)
                             },
-                            onToggleSave: {
-                                // 本地收藏（书签）：只写本地 SwiftData，不伪造服务器收藏成功。
-                                SavedThread.toggle(tid: viewModel.thread.id,
-                                                   title: viewModel.thread.title,
-                                                   boardName: viewModel.thread.typeName,
-                                                   authorName: viewModel.thread.authorName,
-                                                   context: modelContext)
-                            }
+                            onToggleSave: { toggleSaveThread() },
+                            onUnblock: {
+                                // 取消本地拉黑（与论坛管理员的处罚无关）。
+                                if let uid = post.authorID {
+                                    BlockedUser.unblock(uid: uid, context: modelContext)
+                                }
+                            },
+                            onShareToBuddy: { showShareToBuddy = true },
+                            onReport: { reportThread() }
                         )
                         .id(index == 0 ? "firstPost" : "post-\(post.id)")
                         .background(Color.appBackground(scheme))
@@ -254,6 +304,47 @@ struct ThreadDetailView: View {
                 Image(systemName: "square.and.pencil")
             }
             .accessibilityIdentifier("detail-reply")
+        }
+    }
+
+    // MARK: - 收藏（论坛服务器真源）
+
+    /// 收藏 / 取消收藏。
+    ///
+    /// 收藏是**论坛服务器上的数据**（`my.php?item=favorites&type=thread`），需要登录；
+    /// 结果以 `FavoritesStore` 的回读确认为准，没确认成功就如实提示。
+    private func toggleSaveThread() {
+        guard DemoMode.isOn || SessionManager.shared.state.isAuthenticated else {
+            actionNotice = "收藏需要登录：登录后收藏会保存到你的 4D4Y 收藏列表里。"
+            return
+        }
+        Task {
+            if await favorites.toggle(tid: viewModel.thread.id) == nil {
+                actionNotice = favorites.lastError ?? "收藏未能确认，请稍后在「我的 → 收藏」里核对。"
+            }
+        }
+    }
+
+    // MARK: - 举报
+
+    /// 论坛没有原生举报接口：先把该帖链接复制到剪贴板；
+    /// 若已配置收件人（`PreferenceStore.reportAdminUID`）且已登录，直接打开给管理员的私信。
+    /// 未配置 / 未登录都只复制链接并如实说明，**绝不假装举报已发出**。
+    private func reportThread() {
+        guard let url = threadWebURL else {
+            actionNotice = "拿不到该帖的网页地址，无法复制链接。"
+            return
+        }
+        UIPasteboard.general.string = url.absoluteString
+
+        let admin = PreferenceStore.shared.reportAdminUID
+        if admin > 0, SessionManager.shared.state.isAuthenticated {
+            reportAdminUID = admin
+            showReportChat = true
+        } else if admin > 0 {
+            actionNotice = "链接已复制。举报要通过站内短信发给管理员，请先登录后再试。"
+        } else {
+            actionNotice = "链接已复制。还没有配置举报收件人，可直接粘贴发给管理员（可在设置里填写收件人 UID）。"
         }
     }
 

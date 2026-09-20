@@ -21,6 +21,8 @@ enum SearchError: LocalizedError, Equatable {
 protocol SearchRepositoryProtocol {
     /// 按标题搜索（GBK 编码关键词，与论坛 charset 一致）。
     func search(keyword: String) async -> Result<[ForumThread], SearchError>
+    /// 按作者搜索（用户卡「搜贴」）。
+    func search(authorUID: Int) async -> Result<[ForumThread], SearchError>
 }
 
 // MARK: - SearchRepository
@@ -38,8 +40,18 @@ final class SearchRepository: SearchRepositoryProtocol {
         // 关键词按 GBK 字节编码（论坛 charset=gbk；UTF-8 中文会乱码）
         let allowed = CharacterSet.alphanumerics.union(.init(charactersIn: "-_.~"))
         let encoded = DiscuzFormParser.gbkPercent(trimmed, allowed: allowed)
-        let path = "search.php?srchtxt=\(encoded)&srchtype=title&searchsubmit=yes"
+        return await run(path: "search.php?srchtxt=\(encoded)&srchtype=title&searchsubmit=yes")
+    }
 
+    /// 按作者搜索（用户卡「搜贴」）：`search.php?srchuid=<uid>&srchfid=all&srchfrom=0&searchsubmit=yes`。
+    /// 同样需要登录（论坛不允许游客搜索）。
+    func search(authorUID: Int) async -> Result<[ForumThread], SearchError> {
+        guard authorUID > 0 else { return .failure(.emptyResult) }
+        return await run(path: "search.php?srchuid=\(authorUID)&srchfid=all&srchfrom=0&searchsubmit=yes")
+    }
+
+    /// 两种搜索共用的取页 + 解析流程。
+    private func run(path: String) async -> Result<[ForumThread], SearchError> {
         do {
             let request = try client.request(path: path)
             let html = try await client.sendText(request)
