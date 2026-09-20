@@ -1,88 +1,180 @@
 import SwiftUI
 
-/// 消息：「站内短信」/「系统消息」分段切换，聚合私信与互动通知。
-/// 消息 Tab 红角标显示未读数（由 RootView / ScreenshotGalleryView 的 .badge 呈现）。
+/// 消息：「站内短信」/「系统消息」分段切换（真实 `pm.php`）。
+///
+/// 数据诚实：论坛页面没给的字段就不显示 —— 没有未读标记就不画红点，
+/// 短信一条都没有就提示「还没有站内短信」，解析不出结构就明确说明，
+/// 每种失败态都给出「登录 / 重试」出口。
 struct MessageView: View {
     @Environment(\.colorScheme) private var scheme
-    @State private var segment: MessageSeg = .pm
+    @StateObject private var viewModel = MessageViewModel()
+    @State private var showLogin = false
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                Picker("消息", selection: $segment) {
-                    Text("站内短信").tag(MessageSeg.pm)
-                    Text("系统消息").tag(MessageSeg.system)
+                Picker("消息", selection: $viewModel.segment) {
+                    ForEach(MessageViewModel.Segment.allCases) { seg in
+                        Text(seg.title).tag(seg)
+                    }
                 }
                 .pickerStyle(.segmented)
                 .padding(12)
                 .background(Color.appBackground(scheme))
 
-                List {
-                    switch segment {
-                    case .pm:
-                        ForEach(MessageData.pm) { MessageRow(item: $0) }
-                    case .system:
-                        ForEach(MessageData.system) { MessageRow(item: $0) }
-                    }
-                }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
-                .background(Color.appBackground(scheme))
+                content
             }
+            .background(Color.appBackground(scheme))
             .navigationTitle("消息")
             .navigationBarTitleDisplayMode(.inline)
+            .sheet(isPresented: $showLogin) { LoginView() }
+            .task { await viewModel.load() }
+            .onChange(of: viewModel.segment) { _, _ in
+                Task { await viewModel.load() }
+            }
         }
+    }
+
+    // MARK: - 内容区
+
+    @ViewBuilder
+    private var content: some View {
+        switch viewModel.state {
+        case .idle, .loading:
+            ProgressView("加载消息…")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .foregroundStyle(Color.appTextSecondary(scheme))
+
+        case .requiresLogin:
+            loginPrompt
+
+        case .failed(let message):
+            VStack(alignment: .leading) {
+                ErrorRow(message: message,
+                         debugDetail: "消息页：\(viewModel.segment == .pm ? "pm.php?filter=privatepm" : "pm.php?filter=systempm")") {
+                    Task { await viewModel.load() }
+                }
+                .padding(16)
+                Spacer()
+            }
+
+        case .loaded(let items) where items.isEmpty:
+            emptyState
+
+        case .loaded(let items):
+            List {
+                ForEach(items) { item in
+                    row(for: item)
+                }
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .background(Color.appBackground(scheme))
+            .refreshable { await viewModel.load() }
+        }
+    }
+
+    @ViewBuilder
+    private func row(for item: PrivateMessage) -> some View {
+        if let uid = item.userID, uid > 0 {
+            NavigationLink {
+                MessageChatView(userID: uid, userName: item.userName)
+            } label: {
+                MessageRow(item: item)
+            }
+        } else {
+            // 系统 / 公共消息没有会话对象，只读展示（不跳进一个空会话）。
+            MessageRow(item: item)
+        }
+    }
+
+    private var loginPrompt: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "envelope.badge")
+                .font(.largeTitle)
+                .foregroundStyle(Color.appTextTertiary(scheme))
+            Text("站内短信需要登录")
+                .font(.headline)
+                .foregroundStyle(Color.appTextPrimary(scheme))
+            Text("论坛不允许游客查看短消息。登录 4D4Y 账号后即可查看收件箱与系统消息。")
+                .font(.footnote)
+                .multilineTextAlignment(.center)
+                .foregroundStyle(Color.appTextSecondary(scheme))
+            Button {
+                showLogin = true
+            } label: {
+                Text("登录")
+                    .font(.subheadline).fontWeight(.semibold)
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(Color.appPrimary(scheme))
+                    .cornerRadius(12)
+            }
+            .padding(.horizontal, 40)
+            .padding(.top, 4)
+            .accessibilityIdentifier("message-login")
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "tray")
+                .font(.largeTitle)
+                .foregroundStyle(Color.appTextTertiary(scheme))
+            Text(viewModel.segment == .pm ? "还没有站内短信" : "还没有系统消息")
+                .font(.subheadline)
+                .foregroundStyle(Color.appTextSecondary(scheme))
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
-private enum MessageSeg { case pm, system }
-
-private struct MessageItem: Identifiable {
-    let id = UUID()
-    let title: String
-    let preview: String
-    let time: String
-    let unread: Bool
-}
-
-private enum MessageData {
-    static let pm = [
-        MessageItem(title: "Discovery控", preview: "你那台 Treo 650 出吗？想要", time: "10:24", unread: true),
-        MessageItem(title: "Kepler", preview: "PETG 烘干参数收到了，谢谢！", time: "昨天", unread: false)
-    ]
-    static let system = [
-        MessageItem(title: "回复提醒", preview: "老橡树 回复了你的主题", time: "2 小时前", unread: true),
-        MessageItem(title: "收藏提醒", preview: "有人收藏了你的帖子", time: "昨天", unread: false)
-    ]
-}
+// MARK: - 列表行
 
 private struct MessageRow: View {
-    let item: MessageItem
+    let item: PrivateMessage
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: "person.crop.circle.fill")
-                .font(.title)
-                .foregroundStyle(Color.appTextTertiary(scheme))
-                .frame(width: 44, height: 44)
+            AvatarView(authorID: item.userID, authorName: item.userName, size: 44)
+
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
-                    Text(item.title)
+                    Text(item.userName)
                         .font(.subheadline).fontWeight(.semibold)
                         .foregroundStyle(Color.appTextPrimary(scheme))
-                    if item.unread {
-                        Circle().fill(Color.appPrimary(scheme)).frame(width: 8, height: 8)
+
+                    // 只有页面明确标了「未读」才画红点
+                    if item.isUnread == true {
+                        Circle()
+                            .fill(Color.appPrimary(scheme))
+                            .frame(width: 8, height: 8)
                     }
+
                     Spacer()
-                    Text(item.time)
+
+                    Text(item.timeRaw)
                         .font(.caption2)
                         .foregroundStyle(Color.appTextTertiary(scheme))
                 }
-                Text(item.preview)
-                    .font(.caption)
-                    .foregroundStyle(Color.appTextSecondary(scheme))
-                    .lineLimit(1)
+
+                if !item.subject.isEmpty {
+                    Text(item.subject)
+                        .font(.caption)
+                        .foregroundStyle(Color.appTextPrimary(scheme))
+                        .lineLimit(1)
+                }
+
+                if !item.preview.isEmpty, item.preview != item.subject {
+                    Text(item.preview)
+                        .font(.caption)
+                        .foregroundStyle(Color.appTextSecondary(scheme))
+                        .lineLimit(1)
+                }
             }
         }
         .padding(.vertical, 8)

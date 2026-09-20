@@ -189,4 +189,62 @@ enum DemoData {
             )
         ]
     }
+
+    // MARK: - 消息 / 用户卡样例（截图用离线内容，真实模式走 pm.php / space.php）
+
+    /// 站内短信收件箱样例。
+    static func pmInboxDemo() -> [PrivateMessage] {
+        [
+            PrivateMessage(id: "pm:uid:1024", pmid: nil, userID: 1024, userName: "老橡树",
+                           subject: "你那台 X1C 的进料轮换了吗？",
+                           preview: "换了第三方硅胶轮，异响基本没了。",
+                           timeRaw: "昨天 21:04", isUnread: true),
+            PrivateMessage(id: "pm:uid:2077", pmid: nil, userID: 2077, userName: "Kepler",
+                           subject: "PETG 烘干参数收到了，谢谢！",
+                           preview: "按你给的 65℃ / 4h 烘完，拉丝确实好多了。",
+                           timeRaw: "昨天", isUnread: false),
+            PrivateMessage(id: "pm:uid:888", pmid: nil, userID: 888, userName: "Discovery控",
+                           subject: "你那台 Treo 650 出吗？想要",
+                           preview: "成色好的话我收一台当收藏。",
+                           timeRaw: "3 天前", isUnread: false)
+        ]
+    }
+
+    /// 系统消息样例（无会话对象，列表只读展示）。
+    static func systemMessagesDemo() -> [PrivateMessage] {
+        [
+            PrivateMessage(id: "sys:1", pmid: nil, userID: nil, userName: "系统消息",
+                           subject: "回复提醒",
+                           preview: "老橡树 回复了你的主题《PETG 打印温度到底设多少？》",
+                           timeRaw: "2 小时前", isUnread: true),
+            PrivateMessage(id: "sys:2", pmid: nil, userID: nil, userName: "系统消息",
+                           subject: "收藏提醒",
+                           preview: "有人收藏了你的帖子",
+                           timeRaw: "昨天", isUnread: false)
+        ]
+    }
+
+    /// 与「老橡树」的私信往来样例。
+    static func pmConversationDemo() -> [PMBubble] {
+        [
+            PMBubble(id: "demo-1", text: "你那台 X1C 的进料轮换了吗？", timeRaw: "昨天 21:04", isMe: false, senderName: "老橡树"),
+            PMBubble(id: "demo-2", text: "换了第三方硅胶轮，异响基本没了。", timeRaw: "昨天 21:10", isMe: true, senderName: "演示用户"),
+            PMBubble(id: "demo-3", text: "太好了，我也下单一个，扭矩按多少拧？", timeRaw: "昨天 21:12", isMe: false, senderName: "老橡树"),
+            PMBubble(id: "demo-4", text: "手感紧就行，别超过 0.4N·m，塑料件容易滑丝。", timeRaw: "昨天 21:15", isMe: true, senderName: "演示用户"),
+            PMBubble(id: "demo-5", text: "收到，谢啦！", timeRaw: "今天 09:02", isMe: false, senderName: "老橡树")
+        ]
+    }
+
+    /// 用户卡样例资料（仅截图用；真实模式走 space.php）。
+    static func userProfileDemo(uid: Int, name: String) -> UserProfile {
+        if uid == 1024 {
+            return UserProfile(uid: 1024, name: "老橡树", group: "论坛元老",
+                               posts: 328, points: 9520,
+                               signature: "键盘会老，手感永存。",
+                               registeredRaw: "2003-05-18", location: "上海")
+        }
+        return UserProfile(uid: uid, name: name.isEmpty ? "该用户" : name,
+                           group: "论坛会员", posts: nil, points: nil,
+                           signature: nil, registeredRaw: nil, location: nil)
+    }
 }

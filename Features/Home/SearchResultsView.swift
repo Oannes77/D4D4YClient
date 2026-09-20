@@ -91,7 +91,7 @@ struct SearchResultsView: View {
                     item: item,
                     onOpen: { selectedThread = item },
                     onReply: { selectedThread = item },
-                    onUser: { _ in }
+                    onUser: { _, _ in }
                 )
                 Divider().background(Color.appDivider(scheme))
             }

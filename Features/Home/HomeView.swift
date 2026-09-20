@@ -25,6 +25,8 @@ struct HomeView: View {
     @State private var selectedThread: HomeThreadItem?
     @State private var jumpToLast = false
     @State private var selectedUser: Int?
+    /// 被点开的作者名（用户卡在资料加载完成前先显示它，避免出现「该用户」占位）。
+    @State private var selectedUserName = ""
     @State private var showUserCard = false
     @State private var showCompose = false
 
@@ -78,7 +80,7 @@ struct HomeView: View {
                 SearchResultsView(keyword: request.keyword)
             }
             .sheet(isPresented: $showUserCard) {
-                if let uid = selectedUser { UserCardSheet(userID: uid) }
+                if let uid = selectedUser { UserCardSheet(userID: uid, fallbackName: selectedUserName) }
             }
             .sheet(isPresented: $showCompose) {
                 NewPostView(defaultFid: selectedFid)
@@ -136,7 +138,11 @@ struct HomeView: View {
                     item: item,
                     onOpen: { selectedThread = item },
                     onReply: { selectedThread = item; jumpToLast = true },
-                    onUser: { uid in selectedUser = uid; showUserCard = true }
+                    onUser: { uid, name in
+                        selectedUser = uid
+                        selectedUserName = name
+                        showUserCard = true
+                    }
                 )
                 .background(Color.appBackground(scheme))
                 .onAppear {

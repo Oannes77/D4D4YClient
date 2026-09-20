@@ -57,6 +57,10 @@ struct RootView: View {
     @EnvironmentObject private var session: SessionManager
     @Query private var settings: [LocalSettings]
 
+    /// 消息未读数（由 `MessageViewModel` 加载收件箱后写入）。
+    /// 没读到未读标记就是 0，`.badge(0)` 不显示角标 —— 不再写死 `.badge(3)`。
+    @ObservedObject private var unread = UnreadBadge.shared
+
     /// 恢复流程是否已完成（避免首帧就闪一下登录页）。
     @State private var hasRestored = false
     /// 用户主动选择"先以游客身份浏览"。
@@ -105,7 +109,7 @@ struct RootView: View {
 
             MessageView()
                 .tabItem { Label("消息", systemImage: "bell") }
-                .badge(3)
+                .badge(unread.privateMessages)
 
             ProfileView()
                 .tabItem { Label("我的", systemImage: "person") }

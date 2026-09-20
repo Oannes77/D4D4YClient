@@ -10,7 +10,7 @@ struct PostRow: View {
     let item: HomeThreadItem
     var onOpen: () -> Void
     var onReply: () -> Void
-    var onUser: (Int) -> Void
+    var onUser: (Int, String) -> Void
 
     @Environment(\.colorScheme) private var scheme
 
@@ -19,14 +19,14 @@ struct PostRow: View {
             // 头部：头像 + 名 + 分组 + 时间 + 板块
             HStack(alignment: .top, spacing: 10) {
                 AvatarView(authorID: item.authorID, authorName: item.authorName, size: 42)
-                    .onTapGesture { if let uid = item.authorID { onUser(uid) } }
+                    .onTapGesture { if let uid = item.authorID { onUser(uid, item.authorName) } }
 
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 4) {
                         Text(item.authorName)
                             .font(.subheadline).fontWeight(.semibold)
                             .foregroundStyle(Color.appTextPrimary(scheme))
-                            .onTapGesture { if let uid = item.authorID { onUser(uid) } }
+                            .onTapGesture { if let uid = item.authorID { onUser(uid, item.authorName) } }
                         if let group = item.authorGroup {
                             Text("· \(group)")
                                 .font(.caption)

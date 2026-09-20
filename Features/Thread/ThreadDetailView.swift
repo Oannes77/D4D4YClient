@@ -21,6 +21,8 @@ struct ThreadDetailView: View {
     @State private var showReply = false
     @State private var replyInitial = ""
     @State private var selectedUser: Int?
+    /// 被点开的作者名（用户卡在资料加载完成前先显示它，避免出现「该用户」占位）。
+    @State private var selectedUserName = ""
     @State private var showUserCard = false
     @State private var jumpToLast = false
 
@@ -85,7 +87,7 @@ struct ThreadDetailView: View {
                     ReplySheet(tid: viewModel.thread.id, initial: replyInitial) { _ in }
                 }
                 .sheet(isPresented: $showUserCard) {
-                    if let uid = selectedUser { UserCardSheet(userID: uid) }
+                    if let uid = selectedUser { UserCardSheet(userID: uid, fallbackName: selectedUserName) }
                 }
         } else {
             ScrollViewReader { proxy in
@@ -109,7 +111,7 @@ struct ThreadDetailView: View {
                     ReplySheet(tid: viewModel.thread.id, initial: replyInitial) { _ in }
                 }
                 .sheet(isPresented: $showUserCard) {
-                    if let uid = selectedUser { UserCardSheet(userID: uid) }
+                    if let uid = selectedUser { UserCardSheet(userID: uid, fallbackName: selectedUserName) }
                 }
             }
         }
@@ -136,7 +138,11 @@ struct ThreadDetailView: View {
                             post: post,
                             isOP: index == 0,
                             onlyAuthorUID: $onlyAuthorUID,
-                            onUser: { uid in selectedUser = uid; showUserCard = true },
+                            onUser: { uid, name in
+                                selectedUser = uid
+                                selectedUserName = name
+                                showUserCard = true
+                            },
                             onReply: {
                                 if let proxy {
                                     withAnimation(nil) { proxy.scrollTo("lastReply", anchor: .bottom) }
@@ -154,11 +160,14 @@ struct ThreadDetailView: View {
                         Divider().background(Color.appDivider(scheme))
                     }
                 }
-                Color.clear.id("lastReply")
             }
 
             // 分页条：Discuz 每页 50 楼，页尾提供上一页 / 下一页。
+            // 「lastReply」锚点必须挂在分页条**之后**：若挂在楼层流末尾，
+            // scrollTo(anchor: .bottom) 只会把零高度的锚点对齐到屏幕底部，
+            // 其下方的分页条会被挤出屏幕（截图里页码被裁掉半个就是这个原因）。
             pageFooter(pageData.pageInfo)
+                .id("lastReply")
         }
     }
 

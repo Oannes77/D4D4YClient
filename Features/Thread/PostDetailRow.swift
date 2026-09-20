@@ -12,7 +12,7 @@ struct PostDetailRow: View {
     let post: Post
     let isOP: Bool
     @Binding var onlyAuthorUID: Int?
-    var onUser: (Int) -> Void
+    var onUser: (Int, String) -> Void
     var onReply: () -> Void
     var onQuote: (Post) -> Void
     var onImageTap: (URL) -> Void
@@ -27,14 +27,14 @@ struct PostDetailRow: View {
             // 头部
             HStack(alignment: .center, spacing: 10) {
                 AvatarView(authorID: post.authorID, authorName: post.authorName, size: 40)
-                    .onTapGesture { if let uid = post.authorID { onUser(uid) } }
+                    .onTapGesture { if let uid = post.authorID { onUser(uid, post.authorName) } }
 
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 4) {
                         Text(post.authorName)
                             .font(.subheadline).fontWeight(.semibold)
                             .foregroundStyle(Color.appTextPrimary(scheme))
-                            .onTapGesture { if let uid = post.authorID { onUser(uid) } }
+                            .onTapGesture { if let uid = post.authorID { onUser(uid, post.authorName) } }
 
                         Button {
                             onlyAuthorUID = (onlyAuthorUID == post.authorID ? nil : post.authorID)

@@ -98,7 +98,7 @@ struct ScreenshotRouteView: View {
         case .userCard:
             tabHost
                 .sheet(isPresented: $showUserCard) {
-                    UserCardSheet(userID: 1024)
+                    UserCardSheet(userID: 1024, fallbackName: "老橡树")
                 }
         case .imageViewer:
             ImageViewer(url: URL(string: "https://placehold.co/1200x800/534AB7/FFFFFF/png?text=4D4Y")!)
@@ -109,7 +109,7 @@ struct ScreenshotRouteView: View {
         case .boardManage:
             NavigationStack { BoardManageView() }
         case .chat:
-            NavigationStack { MessageChatView(with: "老橡树") }
+            NavigationStack { MessageChatView(userID: 1024, userName: "老橡树") }
         case .settings:
             NavigationStack { SettingsView() }
         case .security:

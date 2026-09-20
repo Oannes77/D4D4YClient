@@ -31,6 +31,8 @@ final class AppScreenshotTests: XCTestCase {
         Target(screen: "userCard",    waitElement: "加好友",           settle: 1.5),
         Target(screen: "newPost",     waitElement: "发布",            settle: 1.0),
         Target(screen: "chat",        waitElement: "发送",            settle: 1.0),
+        // 消息列表本轮改为真实 pm.php 驱动（Demo 下走离线样例），重新纳入验收。
+        Target(screen: "message",     waitElement: "消息",            settle: 1.2),
     ]
 
     /// 已验收通过的界面（默认不跑）。需要全量回归时，把这组拼到 `targets` 后面即可。
@@ -39,7 +41,6 @@ final class AppScreenshotTests: XCTestCase {
         Target(screen: "imageViewer", waitElement: "",               settle: 2.0),
         Target(screen: "search",      waitElement: "home-post-open", settle: 1.0),
         Target(screen: "boardManage", waitElement: "添加",            settle: 1.0),
-        Target(screen: "message",     waitElement: "消息",            settle: 1.0),
         Target(screen: "profile",     waitElement: "主题外观",         settle: 1.0),
         Target(screen: "settings",    waitElement: "主题外观",         settle: 1.0),
         Target(screen: "security",    waitElement: "退出登录",         settle: 1.0),
