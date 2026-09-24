@@ -72,14 +72,8 @@ struct HomeView: View {
                     onSwipe: { switchBoard(by: $0) }
                 )
 
-                // 板块筛选条：**分类在前、排序时间在后**，全部来自板块页自身链接。
-                // 演示模式用同一条（从离线夹具 PC 页面解析），保证「演示跑的 = 线上跑的」。
-                if let bar = activeFilterBar, !bar.isEmpty {
-                    BoardFilterBarView(bar: bar) { option in
-                        Task { await viewModel.applyFilter(option) }
-                    }
-                }
-
+                // 顶部一行：搜索 + 发帖（**默认整排收起**，下拉回弹才出现）。
+                // 放在板块胶囊正下方、排序条之上 —— 它俩都是「顶部控制」，排序条则紧贴列表。
                 CollapsibleSearch(
                     text: $searchText,
                     collapsed: searchCollapsed,
@@ -87,6 +81,14 @@ struct HomeView: View {
                     onSubmit: submitSearch,
                     onCompose: { showCompose = true }
                 )
+
+                // 板块排序条：热门 / 一天 / 两天 / 周 / 月 / 季，全部来自板块页自身链接。
+                // 演示模式用同一条（从离线夹具 PC 页面解析），保证「演示跑的 = 线上跑的」。
+                if let bar = activeFilterBar, !bar.isEmpty {
+                    BoardFilterBarView(bar: bar) { option in
+                        Task { await viewModel.applyFilter(option) }
+                    }
+                }
 
                 content
             }
