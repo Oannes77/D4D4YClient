@@ -128,7 +128,7 @@ struct ScreenshotRouteView: View {
         case .chat:
             NavigationStack { MessageChatView(userID: 1024, userName: "老橡树") }
         case .reportChat:
-            // 举报私信：收件人固定为管理员 4d4y（UID 29），输入框预填帖子链接草稿
+            // 举报私信：收件人固定为管理员 4D4Y（UID 29），输入框预填帖子链接草稿
             // （与 ThreadDetailView.reportDraft 同口径；**仍需用户自己点发送**，不自动提交）。
             NavigationStack {
                 MessageChatView(

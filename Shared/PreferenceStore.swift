@@ -65,7 +65,7 @@ final class PreferenceStore: ObservableObject {
     /// 举报私信的收件人 uid（`0` = 不使用默认收件人）。
     ///
     /// 论坛没有原生举报接口，客户端采用「复制该帖链接 + 私信管理员」的方式。
-    /// 平时收件人固定为 `defaultReportAdminUID`（管理员 4d4y）；
+    /// 平时收件人固定为 `defaultReportAdminUID`（管理员 4D4Y）；
     /// 只有在已登录时才会真正打开私信页 —— 未登录只复制链接并提示先登录，**不假装已发出**。
     @Published var reportAdminUID: Int {
         didSet { defaults.set(reportAdminUID, forKey: Key.reportAdminUID) }
