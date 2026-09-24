@@ -71,23 +71,28 @@ struct SavedThreadsView: View {
     }
 
     private func row(_ item: FavoriteItem) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(item.title)
-                .font(.subheadline).fontWeight(.medium)
-                .foregroundStyle(Color.appTextPrimary(scheme))
-                .lineLimit(2)
-                .multilineTextAlignment(.leading)
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(item.title)
+                    .font(.subheadline).fontWeight(.medium)
+                    .foregroundStyle(Color.appTextPrimary(scheme))
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
 
-            HStack(spacing: 6) {
                 if !item.detail.isEmpty {
                     Text(item.detail)
+                        .font(.caption2)
+                        .foregroundStyle(Color.appTextTertiary(scheme))
                 }
-                Spacer()
-                Image(systemName: "star.fill")
-                    .foregroundStyle(Color.appGold(scheme))
             }
-            .font(.caption2)
-            .foregroundStyle(Color.appTextTertiary(scheme))
+
+            Spacer(minLength: 8)
+
+            // 星标放在行尾、与右侧的「›」同在**行的垂直中线**上。
+            // 原先它挂在「详情」那一行的末尾 ⇒ 比箭头低一整行，看起来没对齐。
+            Image(systemName: "star.fill")
+                .font(.footnote)
+                .foregroundStyle(Color.appGold(scheme))
         }
         .padding(.vertical, 4)
     }

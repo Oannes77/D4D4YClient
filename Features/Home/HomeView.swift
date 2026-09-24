@@ -6,10 +6,13 @@ import SwiftData
 /// 2026-09-18 框架：首页 = 板块主题列表，非 Dashboard。
 /// - 顶部板块切换条（来自 SwiftData `PinnedForum`，用户顺序）：**点击胶囊**进入该板块并刷新最近动态，
 ///   **在胶囊条上左右滑**切换到上一个 / 下一个板块，滑块自动居中到当前胶囊。
-/// - 折叠搜索栏（上推隐藏 / 滚到顶出现），回车进入搜索结果页。
+/// - 搜索栏：**默认收起**（省出信息位），**下拉回弹才展开**；一旦向上滚内容即自动收起。
+///   回车进入搜索结果页。
+/// - 发帖入口：搜索框下方的 Threads 风格一条（头像 + 「发新帖…」胶囊），点它进发帖页。
+///   ⚠️ 2026-09-24 起**取消右下角紫色悬浮按钮（FAB）** —— FAB 固定悬浮必然压住列表正文
+///   （验收截图里盖住了第 2 条的标题与摘要），改由这条常驻入口承担同一功能。
 /// - 帖子卡片流：标题加粗 + 正文 3 行截断 + 单图 + 附件回形针 + 全图标操作栏。
 /// - 下拉刷新 + 滚到末尾自动加载下一页（分页 URL 由页面解析给出）。
-/// - 右下角紫色 FAB 发帖（仅首页）。
 /// - 点击区域收敛：仅 标题/正文/图/附件/回复数 进详情；作者头像/名 弹用户卡。
 struct HomeView: View {
     @Environment(\.colorScheme) private var scheme
@@ -19,11 +22,16 @@ struct HomeView: View {
     @ObservedObject private var favorites = FavoritesStore.shared
     /// 本地已拉黑作者（纯客户端行为，与论坛侧处罚无关）。
     @Query private var blockedUsers: [BlockedUser]
+    /// 当前会话：发帖入口左侧头像用（登录后换真人头像）。
+    /// 直接观察共享单例而不是走 `@EnvironmentObject` —— 首页在各处（含截图路由）被复用，
+    /// 少一个「环境里没注入就崩」的隐患。
+    @ObservedObject private var session = SessionManager.shared
     @StateObject private var viewModel = HomeViewModel()
 
     @State private var selectedFid: Int = 2
     @State private var searchText = ""
-    @State private var searchCollapsed = false
+    /// 搜索栏默认**收起**（只在首页顶部下拉回弹时展开）。
+    @State private var searchCollapsed = true
     @State private var searchRequest: SearchRequest?
     /// 演示模式专用：离线样例流（不触发网络）。
     @State private var demoFeed: [HomeThreadItem] = []
@@ -47,6 +55,15 @@ struct HomeView: View {
 
     private var feed: [HomeThreadItem] { DemoMode.isOn ? demoFeed : viewModel.items }
 
+    /// 当前用户 UID（未登录 / 拿不到时为 nil ⇒ 头像走中性默认图标，不发多余请求）。
+    private var currentUserID: Int? {
+        guard let uid = session.state.session?.uid, uid > 0 else { return nil }
+        return uid
+    }
+
+    /// 当前用户名（头像回退时只在无障碍标签里用，不显示占位文字）。
+    private var currentUserName: String { session.state.session?.username ?? "" }
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
@@ -63,15 +80,17 @@ struct HomeView: View {
                     onSubmit: submitSearch
                 )
 
+                // 发帖入口（取代原右下角 FAB —— FAB 悬浮会压住列表正文）。
+                ComposeEntryBar(
+                    authorID: currentUserID,
+                    authorName: currentUserName
+                ) { showCompose = true }
+
                 content
             }
             .background(Color.appBackground(scheme))
             .navigationTitle(viewModel.boardTitle.isEmpty ? "首页" : viewModel.boardTitle)
             .navigationBarTitleDisplayMode(.inline)
-            .overlay(alignment: .bottomTrailing) {
-                ComposeFAB { showCompose = true }
-                    .padding(20)
-            }
             .navigationDestination(item: $selectedThread) { item in
                 ThreadDetailView(
                     thread: ForumThread(
@@ -149,7 +168,14 @@ struct HomeView: View {
         }
         .coordinateSpace(name: "homeScroll")
         .onPreferenceChange(ScrollOffsetKey.self) { y in
-            searchCollapsed = y < -8
+            // 搜索栏默认收起；**下拉回弹**（内容被拽过顶，y > 4）才展开，
+            // 一旦向上滚内容（y < -4）就收起。
+            // 两个阈值分开、且中间不动作 ⇒ 回弹到位时不会反复抖。
+            if y > 4, searchCollapsed {
+                searchCollapsed = false
+            } else if y < -4, !searchCollapsed {
+                searchCollapsed = true
+            }
         }
     }
 

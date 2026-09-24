@@ -87,28 +87,41 @@ struct PostContent: View {
 
     // MARK: - 图片缩略图
 
+    /// 楼层图片：**一张一行**，按原始比例铺满可用宽度。
+    ///
+    /// 2026-09-24 改：原先用 `LazyVGrid(.adaptive(minimum: 110))` 排成 120pt 高的方块墙
+    /// （一行 3 张，`scaledToFill` 裁掉两边）。论坛附件多是竖拍照片或整屏截图，
+    /// 裁成小方块后既看不清内容、一行里的宽窄高矮又不齐，观感很乱。
+    /// 改成竖排后：每张图完整可见（`scaledToFit` 不裁切），点任意一张仍进全屏画廊左右滑。
     private var imagesGrid: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 110), spacing: 8)], spacing: 8) {
+        VStack(spacing: 8) {
             ForEach(Array(images.enumerated()), id: \.offset) { pair in
                 AsyncImage(url: pair.element) { phase in
                     switch phase {
                     case .empty:
+                        // 加载中给一块占位（不是零高度），避免图片到达时整页高度跳变。
                         ProgressView()
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 180)
+                            .background(Color.appSurfaceSecondary(scheme))
                     case .success(let image):
                         image
                             .resizable()
-                            .scaledToFill()
+                            .scaledToFit()
+                            .frame(maxWidth: .infinity)
                     case .failure:
                         Image(systemName: "photo")
+                            .font(.title3)
                             .foregroundStyle(Color.appTextTertiary(scheme))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 120)
+                            .background(Color.appSurfaceSecondary(scheme))
                     @unknown default:
                         EmptyView()
                     }
                 }
-                .frame(height: 120)
-                .frame(maxWidth: .infinity)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
-                .clipped()
+                .contentShape(Rectangle())
                 .onTapGesture { onImagesTap(images, pair.offset) }
             }
         }
