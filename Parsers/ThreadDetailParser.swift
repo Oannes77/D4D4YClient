@@ -38,13 +38,30 @@ import SwiftSoup
 /// 因此屏蔽楼（无正文格）同样能被列出来，不会因选择器只认 `td.t_msgfont` 而丢楼。
 struct ThreadDetailParser {
 
-    enum DetailParseError: Error {
+    enum DetailParseError: Error, LocalizedError {
         /// 页面上既没有 PC 楼层也没有任何 WAP 楼层（Selector 未匹配或模板改版）
         case noPostNodes
+        /// 服务器用「提示信息」页代替了帖子内容 —— 登录门（游客访问受限版块的帖子）。
+        /// 与 `noPostNodes` 分开：前者是「要登录」，后者才是「结构不认识」。
+        case siteAlert(SiteAlert)
+
+        var errorDescription: String? {
+            switch self {
+            case .noPostNodes:
+                return "详情页没有解析到任何楼层（可能是模板改版）"
+            case .siteAlert(let alert):
+                return alert.reason ?? alert.message
+            }
+        }
     }
 
     static func parse(html: String) throws -> ThreadPage {
         let document = try SwiftSoup.parse(html)
+
+        // 登录门优先判定（同列表页）：这页没有任何楼层锚点，往下走只会报「结构不认识」。
+        if let alert = SiteAlertParser.parse(document: document) {
+            throw DetailParseError.siteAlert(alert)
+        }
 
         if let page = parsePC(document: document) { return page }
         Log.parser.warning("PC 模板未命中楼层，回退 WAP 模板解析")

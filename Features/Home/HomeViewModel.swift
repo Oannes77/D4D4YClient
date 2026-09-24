@@ -99,6 +99,23 @@ final class HomeViewModel: ObservableObject {
             items = makeItems(page.threads)
             state = items.isEmpty ? .failed("该筛选下暂无主题") : .loaded
             detectMedia(for: page.threads)
+        } catch let error as ThreadListParser.ListParseError {
+            // 登录门 / 权限提示**单列一类状态**：这类页面确实没有主题行，
+            // 但说成「暂无主题」或「解析失败」都是撒谎 —— 4D4Y 游客权限极低，
+            // 除了少数版块，其余一律需要登录（用户 2026-09-24 明确口径）。
+            switch error {
+            case .siteAlert(let alert):
+                items = []
+                pageInfo = nil
+                filterBar = nil
+                state = .notice(SiteNotice(alert: alert))
+            case .emptyThreadList:
+                items = []
+                pageInfo = nil
+                filterBar = nil
+                state = .failed(error.errorDescription ?? "主题列表为空")
+            }
+            Log.parser.error("板块加载被拒(\(path, privacy: .public)): \(String(describing: error), privacy: .public)")
         } catch {
             Log.parser.error("板块加载失败(\(path, privacy: .public)): \(String(describing: error), privacy: .public)")
             state = .failed(error.localizedDescription)

@@ -73,6 +73,11 @@ struct ScreenshotRouteView: View {
             .task {
                 DemoData.seed(context: context)
                 SessionManager.shared.enterDemoSession()
+                // 站点登录门：演示会话是「已登录」的、也不联网，这个状态走不到，
+                // 所以由路由注入；文案来自**真实夹具**的解析结果（不是手写文案）。
+                if screen == .boardLoginGate {
+                    DemoOverrides.shared.homeNotice = DemoData.loadLoginGateNotice()
+                }
                 // Sheet 类界面：等首屏渲染完成后再弹，避免与入场动画冲突。
                 if screen == .reply || screen == .userCard {
                     try? await Task.sleep(nanoseconds: 700_000_000)
@@ -86,6 +91,9 @@ struct ScreenshotRouteView: View {
     private var content: some View {
         switch screen {
         case .home:
+            tabHost
+        case .boardLoginGate:
+            // 状态由 `DemoOverrides` 注入（见 `.task`），这里渲染的还是同一个首页。
             tabHost
         case .message:
             tabHost

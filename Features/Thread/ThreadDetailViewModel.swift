@@ -23,12 +23,12 @@ final class ThreadDetailViewModel: ObservableObject {
 
     func load(page: Int) async {
         state = .loading
+        notice = nil
         do {
             let pageData = try await repository.posts(tid: thread.id, page: page)
             state = .loaded(pageData)
         } catch {
-            Log.parser.error("ThreadDetail load 失败: \(String(describing: error), privacy: .public)")
-            state = .failed(error)
+            fail(error)
         }
     }
 
@@ -60,12 +60,23 @@ final class ThreadDetailViewModel: ObservableObject {
     /// 翻页直接使用 Parser 解析出的站内相对分页 URL，不再自行重建 URL。
     private func load(pageURL: String) async {
         state = .loading
+        notice = nil
         do {
             let pageData = try await repository.posts(pageURL: pageURL)
             state = .loaded(pageData)
         } catch {
-            Log.parser.error("ThreadDetail load 失败: \(String(describing: error), privacy: .public)")
-            state = .failed(error)
+            fail(error)
         }
+    }
+
+    /// 统一失败处理：**站点提示页单列出来**（不是解析失败，是服务器拒绝了这次访问），
+    /// 这样界面才能区分「要登录」和「结构不认识」，前者的出口是登录而不是重试。
+    private func fail(_ error: Error) {
+        if let parseError = error as? ThreadDetailParser.DetailParseError,
+           case .siteAlert(let alert) = parseError {
+            notice = SiteNotice(alert: alert)
+        }
+        Log.parser.error("ThreadDetail load 失败: \(String(describing: error), privacy: .public)")
+        state = .failed(error)
     }
 }

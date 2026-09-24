@@ -11,6 +11,9 @@ struct BoardChips: View {
     var onSelect: (BoardChipItem) -> Void
     /// 在胶囊条上左右滑：+1 = 下一个板块，-1 = 上一个板块。
     var onSwipe: (Int) -> Void = { _ in }
+    /// 需要登录才能访问的版块（游客身份下显示一把小锁）。
+    /// 只是**提示**，不阻止点击 —— 点进去由服务器返回提示页，界面照原文显示 + 给登录入口。
+    var lockedIDs: Set<Int> = []
 
     @Environment(\.colorScheme) private var scheme
 
@@ -23,14 +26,20 @@ struct BoardChips: View {
                             selectedID = board.id
                             onSelect(board)
                         } label: {
-                            Text(board.name)
-                                .font(.subheadline)
-                                .fontWeight(.medium)
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 7)
-                                .background(selectedID == board.id ? Color.appPrimary(scheme) : Color.appSurfaceSecondary(scheme))
-                                .foregroundStyle(selectedID == board.id ? Color.white : Color.appTextPrimary(scheme))
-                                .cornerRadius(20)
+                            HStack(spacing: 5) {
+                                if lockedIDs.contains(board.id) {
+                                    Image(systemName: "lock.fill")
+                                        .font(.system(size: 9, weight: .semibold))
+                                }
+                                Text(board.name)
+                            }
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 7)
+                            .background(selectedID == board.id ? Color.appPrimary(scheme) : Color.appSurfaceSecondary(scheme))
+                            .foregroundStyle(selectedID == board.id ? Color.white : Color.appTextPrimary(scheme))
+                            .cornerRadius(20)
                         }
                         .id(board.id)
                     }

@@ -27,11 +27,23 @@ enum Loadable<T> {
                 detail = String(describing: e)
             }
         case let e as ThreadListParser.ListParseError:
-            message = "主题列表解析失败"
-            detail = String(describing: e) + "（Selector 未匹配 / 列表为空）"
+            if case .siteAlert(let alert) = e {
+                // 登录门 / 权限提示：显示**站点原文**，不要报「解析失败」——
+                // 页面结构一点问题都没有，是这台访客没有权限（游客权限极低）。
+                message = alert.reason ?? alert.message
+                detail = "站点提示页（loginForm=\(alert.hasLoginForm)）"
+            } else {
+                message = "主题列表解析失败"
+                detail = String(describing: e) + "（Selector 未匹配 / 列表为空）"
+            }
         case let e as ThreadDetailParser.DetailParseError:
-            message = "帖子解析失败"
-            detail = String(describing: e) + "（楼层节点为空 / 模板改版）"
+            if case .siteAlert(let alert) = e {
+                message = alert.reason ?? alert.message
+                detail = "站点提示页（loginForm=\(alert.hasLoginForm)）"
+            } else {
+                message = "帖子解析失败"
+                detail = String(describing: e) + "（楼层节点为空 / 模板改版）"
+            }
         default:
             message = "发生未知错误"
             detail = String(describing: error)

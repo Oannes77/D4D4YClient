@@ -61,10 +61,7 @@ enum DemoData {
     /// ⚠️ 演示夹具统一用**站点 PC 模板**页面（`*_pc.html`），与生产路径同一套解析器 ——
     /// 否则截图验收的是一套模板、线上跑的是另一套，「看着没问题」并不等于真的没问题。
     static func loadForumDisplayFixture() -> ThreadListPage? {
-        guard let url = Bundle.main.url(forResource: "forumdisplay_fid14_page1_pc", withExtension: "html"),
-              let data = try? Data(contentsOf: url) else { return nil }
-        let html = String(data: data, encoding: String.Encoding(rawValue: 2147485234))
-            ?? String(data: data, encoding: .utf8) ?? ""
+        guard let html = fixtureHTML(named: "forumdisplay_fid14_page1_pc") else { return nil }
         return try? ThreadListParser.parse(html: html)
     }
 
@@ -72,11 +69,28 @@ enum DemoData {
     /// fid=14 的分类实测是：心得技巧 / 绿色汉化 / 游戏 / 多媒体 / 数据库 / 实用工具 / ROM /
     /// 硬件报告 / HPC / 求助 / 站务（共 11 个）。
     static func loadForumCategoryFixture() -> [BoardCategory]? {
-        guard let url = Bundle.main.url(forResource: "forumdisplay_fid14_page1_pc", withExtension: "html"),
-              let data = try? Data(contentsOf: url) else { return nil }
-        let html = String(data: data, encoding: String.Encoding(rawValue: 2147485234))
-            ?? String(data: data, encoding: .utf8) ?? ""
+        guard let html = fixtureHTML(named: "forumdisplay_fid14_page1_pc") else { return nil }
         return try? BoardFilterParser.categories(html: html)
+    }
+
+    /// 演示 / 截图用：**站点登录门**提示（游客访问受限版块时服务器返回的那一页）。
+    ///
+    /// 夹具 `forumdisplay_fid2_login_gate.html` 是 2026-09-24 用桌面 UA、**游客身份**
+    /// 抓 `forumdisplay.php?fid=2`（Discovery）的**原始响应**（7168 字节）。
+    /// 文案由 `SiteAlertParser` 从这一页里解析出来 —— **不是手写的**，
+    /// 所以截图里看到的就是线上那一页的原文。
+    static func loadLoginGateNotice() -> SiteNotice? {
+        guard let html = fixtureHTML(named: "forumdisplay_fid2_login_gate"),
+              let alert = SiteAlertParser.parse(html: html) else { return nil }
+        return SiteNotice(alert: alert)
+    }
+
+    /// 读取随包夹具并按 GB18030（GBK 超集）解码 —— 站点页面是 GBK，用 utf8 会出乱码。
+    private static func fixtureHTML(named name: String) -> String? {
+        guard let url = Bundle.main.url(forResource: name, withExtension: "html"),
+              let data = try? Data(contentsOf: url) else { return nil }
+        return String(data: data, encoding: String.Encoding(rawValue: 2147485234))
+            ?? String(data: data, encoding: .utf8)
     }
 
     /// 帖子详情演示用夹具（tid → 随 App 打包的资源名）。
@@ -92,11 +106,8 @@ enum DemoData {
     /// 与论坛真实规则一致：第一页 = 首帖 + 最多 49 条回复（共 50 楼），再往下走翻页。
     static func loadViewthreadFixture(tid: Int) -> ThreadPage? {
         let name = viewthreadFixtures[tid] ?? viewthreadFixtures[193033]!
-        guard let url = Bundle.main.url(forResource: name, withExtension: "html"),
-              let data = try? Data(contentsOf: url) else { return nil }
-        let html = String(data: data, encoding: String.Encoding(rawValue: 2147485234))
-            ?? String(data: data, encoding: .utf8) ?? ""
-        guard let page = try? ThreadDetailParser.parse(html: html) else { return nil }
+        guard let html = fixtureHTML(named: name),
+              let page = try? ThreadDetailParser.parse(html: html) else { return nil }
         let posts = Array(page.posts.prefix(50))
         return ThreadPage(title: page.title, typeName: page.typeName, posts: posts, pageInfo: page.pageInfo)
     }

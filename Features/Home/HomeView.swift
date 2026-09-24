@@ -8,9 +8,11 @@ import SwiftData
 ///   **在胶囊条上左右滑**切换到上一个 / 下一个板块，滑块自动居中到当前胶囊。
 /// - 搜索栏：**默认收起**（省出信息位），**下拉回弹才展开**；一旦向上滚内容即自动收起。
 ///   回车进入搜索结果页。
-/// - 发帖入口：搜索框下方的 Threads 风格一条（头像 + 「发新帖…」胶囊），点它进发帖页。
+/// - 发帖入口：**与搜索同一排**（展开态左侧搜索框 + 右端「发帖」按钮）。
 ///   ⚠️ 2026-09-24 起**取消右下角紫色悬浮按钮（FAB）** —— FAB 固定悬浮必然压住列表正文
-///   （验收截图里盖住了第 2 条的标题与摘要），改由这条常驻入口承担同一功能。
+///   （验收截图里盖住了第 2 条的标题与摘要），改由这一排承担同一功能。
+/// - 游客权限：4D4Y 游客只能读少数版块，受限期版块服务器直接返回「提示信息」页。
+///   此时**不显示空列表、也不报解析失败**，而是照站点原文 + 给登录入口（见 `noticeView`）。
 /// - 帖子卡片流：标题加粗 + 正文 3 行截断 + 单图 + 附件回形针 + 全图标操作栏。
 /// - 下拉刷新 + 滚到末尾自动加载下一页（分页 URL 由页面解析给出）。
 /// - 点击区域收敛：仅 标题/正文/图/附件/回复数 进详情；作者头像/名 弹用户卡。
@@ -69,7 +71,8 @@ struct HomeView: View {
                     boards: boards,
                     selectedID: $selectedFid,
                     onSelect: { select($0) },
-                    onSwipe: { switchBoard(by: $0) }
+                    onSwipe: { switchBoard(by: $0) },
+                    lockedIDs: lockedBoardIDs
                 )
 
                 // 顶部一行：搜索 + 发帖（**默认整排收起**，下拉回弹才出现）。
@@ -150,7 +153,10 @@ struct HomeView: View {
             }
             .frame(height: 0)
 
-            if DemoMode.isOn {
+            if let notice = demoNotice {
+                // 截图路由注入的站点提示（演示模式）。
+                noticeView(notice)
+            } else if DemoMode.isOn {
                 feedList
             } else {
                 switch viewModel.state {
@@ -165,6 +171,8 @@ struct HomeView: View {
                     }
                 case .loaded:
                     feedList
+                case .notice(let notice):
+                    noticeView(notice)
                 case .failed(let message):
                     failureView(message)
                 }
@@ -223,6 +231,54 @@ struct HomeView: View {
         }
     }
 
+    /// 站点提示页（登录门 / 权限不足）。
+    ///
+    /// **三件事分开，不许混**：① 这个版块真的没有内容（`该筛选下暂无主题`）；
+    /// ② 页面结构不认识（`failureView` 的解析失败）；③ **服务器明确拒绝了这次访问**（本视图）。
+    /// 第三种情况下空列表或「暂无主题」都是撒谎 —— 所以这里显示**站点原文**
+    /// （`对不起，您还未登录，无权访问该版块。`），并给一个真的能解决问题的出口。
+    /// 按钮按 `needsLogin` 决定：带登录表单 ⇒ 给「登录」；已登录但权限不够（无表单）⇒ 只给「重试」。
+    private func noticeView(_ notice: SiteNotice) -> some View {
+        VStack(spacing: 12) {
+            Image(systemName: notice.needsLogin ? "lock.fill" : "exclamationmark.triangle")
+                .font(.title)
+                .foregroundStyle(notice.needsLogin ? Color.appPrimary(scheme) : Color.appTextTertiary(scheme))
+            Text(notice.needsLogin ? "该版块需要登录" : "站点提示")
+                .font(.headline)
+                .foregroundStyle(Color.appTextPrimary(scheme))
+                .accessibilityIdentifier("board-notice-title")
+            Text(notice.message)
+                .font(.subheadline)
+                .foregroundStyle(Color.appTextSecondary(scheme))
+                .multilineTextAlignment(.center)
+                .accessibilityIdentifier("board-notice-message")
+            if notice.needsLogin {
+                Button {
+                    showLogin = true
+                } label: {
+                    Text("登录")
+                        .font(.subheadline).fontWeight(.semibold)
+                        .padding(.horizontal, 22).padding(.vertical, 9)
+                        .background(Color.appPrimary(scheme))
+                        .foregroundStyle(Color.white)
+                        .cornerRadius(18)
+                }
+                .accessibilityIdentifier("board-notice-login")
+                Text("游客只能浏览部分版块；登录后可访问全部版块。")
+                    .font(.caption)
+                    .foregroundStyle(Color.appTextTertiary(scheme))
+                    .multilineTextAlignment(.center)
+            }
+            Button("重试") {
+                Task { await viewModel.refresh() }
+            }
+            .font(.subheadline)
+            .foregroundStyle(Color.appPrimary(scheme))
+        }
+        .padding(.horizontal, 32)
+        .padding(.top, 70)
+    }
+
     private func failureView(_ message: String) -> some View {
         VStack(spacing: 12) {
             Image(systemName: "wifi.exclamationmark")
@@ -254,7 +310,10 @@ struct HomeView: View {
         }
         viewModel.attach(context: modelContext)
         seedDefaultBoardsIfNeeded()
-        guard let first = boards.first else { return }
+        // 游客默认落在**当前读得到**的版块上：Discovery / Buy & Sell 对游客是登录门
+        // （实测服务器直接返回提示页），拿它当落地页等于一进 App 就撞墙。
+        // 若列表全是需登录版块，则原样取第一个（不做事先筛选的假动作）。
+        guard let first = isGuest ? ForumBoards.firstReadableForGuest(in: boards) : boards.first else { return }
         selectedFid = first.id
         await viewModel.selectBoard(fid: first.id, name: first.name)
     }

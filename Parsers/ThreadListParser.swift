@@ -40,13 +40,32 @@ struct ThreadListParser {
         }
     }
 
-    enum ListParseError: Error {
+    enum ListParseError: Error, LocalizedError {
         /// 主题列表为空（可能是版块不存在、被限制访问或模板改版）
         case emptyThreadList
+        /// 服务器用「提示信息」页代替了列表 —— 典型是**登录门**（游客访问受限版块）。
+        /// 必须与 `emptyThreadList` 分开：那不是「没有主题」，是「你还没登录」。
+        case siteAlert(SiteAlert)
+
+        var errorDescription: String? {
+            switch self {
+            case .emptyThreadList:
+                return "版块页没有解析到主题行（可能是模板改版）"
+            case .siteAlert(let alert):
+                return alert.reason ?? alert.message
+            }
+        }
     }
 
     static func parse(html: String) throws -> ThreadListPage {
         let document = try SwiftSoup.parse(html)
+
+        // 登录门 / 权限提示优先判定：这类页面**没有主题行**，若直接往下走会抛
+        // `emptyThreadList`，界面就会把「需要登录」说成「暂无主题」——那是撒谎。
+        if let alert = SiteAlertParser.parse(document: document) {
+            throw ListParseError.siteAlert(alert)
+        }
+
         let forumName = extractForumName(from: document)
 
         if let page = parsePC(document: document, forumName: forumName) {

@@ -63,6 +63,11 @@ final class AppScreenshotTests: XCTestCase {
         //    否则截图里永远是空的，等于没验。下拉后应看到「🔍 搜索 Discovery … [发帖]」一整排。
         Target(screen: "home",         waitElement: "home-post-open", settle: 1.0,
                pullDown: true, name: "homeSearchCompose"),
+        // ①c 站点登录门（游客权限）：4D4Y 游客只读得了少数版块，受限版块（实测 Discovery /
+        //    Buy & Sell）服务器直接返回「您还未登录，无权访问该版块」提示页。
+        //    必须拍到「该版块需要登录 + 登录按钮 + 站点原文」，而不是空列表或「暂无主题」。
+        //    这一步同时是「不撒谎」的自证：锚点等的是**登录按钮**，它出现才说明识别对了。
+        Target(screen: "boardLoginGate", waitElement: "board-notice-login", settle: 1.2),
         // ② 详情页操作栏：分享改为菜单（系统分享 / 分享给好友）+ 「举报」+ 新增「关注主题」铃铛
         //    首帖正文很长，操作栏在首屏之外 —— 先滚进可视区，否则只能拍到正文，验收点根本看不到。
         Target(screen: "thread",       waitElement: "detail-reply",   settle: 0.6,

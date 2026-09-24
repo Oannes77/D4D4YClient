@@ -42,6 +42,8 @@ struct ThreadDetailView: View {
     @State private var reportAdminUID = 0
     /// 页面级操作提示（举报 / 收藏的失败原因等）。
     @State private var actionNotice: String?
+    /// 站点登录门时弹出的登录页（只有「登录能解决」的情况才会用到）。
+    @State private var showLogin = false
 
     private let forumID: Int?
 
@@ -205,6 +207,8 @@ struct ThreadDetailView: View {
                 } message: {
                     Text(actionNotice ?? "")
                 }
+                // 登录门专用（正式 App 分支才有意义：演示/截图模式走的是离线夹具）。
+                .sheet(isPresented: $showLogin) { LoginView() }
             }
         }
     }
