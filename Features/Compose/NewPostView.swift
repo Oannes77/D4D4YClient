@@ -20,6 +20,10 @@ struct NewPostView: View {
     @State private var fid: Int
     /// 当前板块的**主题分类**（站点每个板块不同，运行时从板块页解析，不硬编码）。
     @State private var categories: [BoardCategory] = []
+    /// 分类**没读到**（登录门 / 网络 / 结构变化）。
+    /// ⚠️ 必须与「该板块确实没有分类」区分开：读不到还默默不显示，就等于告诉用户「这个版没有分类」——
+    /// 实测 Discovery（fid=2）与 Buy & Sell（fid=6）**游客一律是登录门**，本地根本读不到。
+    @State private var categoriesUnavailable = false
     /// 选中的分类 `typeid`；该板块没有分类时为 nil（此时不显示分类选择，也不提交该字段）。
     @State private var selectedTypeID: Int?
     @State private var title = ""
@@ -73,15 +77,22 @@ struct NewPostView: View {
     ///
     /// - 演示模式：从**离线夹具的真实板块页**解析（同一个解析器），不联网；夹具的 fid=14 才有分类，
     ///   其他板块按「没有分类」处理（不发假数据）。
-    /// - 线上：`ForumRepository.categories(fid:)`。拉不到就当作没有分类 ⇒ 不显示下拉，
-    ///   **也不会因此挡住发帖**（不发 `typeid`，由服务器按它自己的规则判定）。
+    /// - 线上：`ForumRepository.categories(fid:)`。**读不到 ≠ 没有分类** —— 拉取失败时置
+    ///   `categoriesUnavailable`，界面如实提示并给重试，绝不静默当成「这个版没有分类」。
+    ///   （实测 Discovery fid=2、Buy & Sell fid=6 游客都是登录门；发帖时带登录态才会拿到真页面。）
     private func loadCategories() async {
         if DemoMode.isOn {
-            categories = fid == 14
-                ? (DemoData.loadForumCategoryFixture() ?? [])
-                : []
+            categories = fid == 14 ? (DemoData.loadForumCategoryFixture() ?? []) : []
+            categoriesUnavailable = false
         } else {
-            categories = (try? await ForumRepository().categories(fid: fid)) ?? []
+            do {
+                categories = try await ForumRepository().categories(fid: fid)
+                categoriesUnavailable = false
+            } catch {
+                Log.parser.error("主题分类读取失败(fid=\(fid, privacy: .public)): \(String(describing: error), privacy: .public)")
+                categories = []
+                categoriesUnavailable = true
+            }
         }
         // 换板块后原来的 typeid 可能不属于新板块 —— 清掉，避免提交一个张冠李戴的分类。
         if let selectedTypeID, !categories.contains(where: { $0.id == selectedTypeID }) {
@@ -139,6 +150,28 @@ struct NewPostView: View {
                                 .background(Color.appSurfaceSecondary(scheme))
                                 .cornerRadius(10)
                             }
+                        }
+                    } else if categoriesUnavailable {
+                        // 读不到分类：如实说，并给重试。**不假装这个版没有分类。**
+                        VStack(alignment: .leading, spacing: 6) {
+                            fieldLabel("分类（该板块的主题分类）")
+                            HStack(spacing: 8) {
+                                Image(systemName: "exclamationmark.triangle")
+                                    .font(.caption)
+                                    .foregroundStyle(Color.appWarning(scheme))
+                                Text("分类没读出来（可能未登录或网络问题）")
+                                    .font(.caption)
+                                    .foregroundStyle(Color.appTextSecondary(scheme))
+                                Spacer()
+                                Button("重试") {
+                                    Task { await loadCategories() }
+                                }
+                                .font(.caption)
+                                .foregroundStyle(Color.appPrimary(scheme))
+                            }
+                            .padding(12)
+                            .background(Color.appSurfaceSecondary(scheme))
+                            .cornerRadius(10)
                         }
                     }
 
