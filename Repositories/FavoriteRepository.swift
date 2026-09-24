@@ -40,14 +40,18 @@ struct FavoriteItem: Identifiable, Hashable {
 
 /// 收藏数据层（Discuz `my.php?item=favorites&type=thread`）。
 ///
-/// ⚠️ 站点模板把帖子页的收藏入口（`favoritewin` 弹窗）**整块注释掉了**，
-/// 所以「加入收藏」的提交地址无法从页面里解析出来。这里的做法是：
-/// 1. 先读收藏列表页，取出 `formhash` 与现有收藏集合；
-/// 2. 按 Discuz! 7.2 的几种标准形式**依次尝试**提交；
-/// 3. 每次尝试后**回读收藏列表**，以「该 tid 是否出现在列表里」为唯一判据。
+/// ⚠️ **本站按 User-Agent 分发两套模板**（详见 `docs/SiteFacts.md`），这一点是理解
+/// 收藏问题的钥匙：
+/// - 客户端（移动 UA）拿到的是精简的 `templates/wap/` 模板，它的帖子页把收藏 / 分享按钮
+///   **整块写进了 HTML 注释** —— Sprint 12 看到的就是这一套，判断本身没错；
+/// - 桌面 UA 的完整模板里这些入口是**活的**，`favoritewin` 弹层给出了权威地址：
+///   `<a onclick="ajaxget('my.php?item=favorites&tid=<tid>', 'favorite_msg')">[收藏此主题]</a>`。
 ///
-/// 全部候选都不成功 → 返回 `.unconfirmed` 并如实说明，**绝不谎报收藏成功**。
-/// （真机登录后可据实际响应把候选收敛为确定的那一个。）
+/// 所以「加入收藏」的首选地址就是上面这条（站点原样，不带 formhash），其余候选留作兜底。
+/// **取消收藏的链接带独立收藏 id**（`favid`，由站点生成，靠 tid 推不出来），
+/// 只能在运行时从收藏列表页解析出来 —— 红线：不硬编码表单参数。
+///
+/// 所有变更一律以**回读收藏列表**为唯一判据；确认不了就返回 `.unconfirmed`，绝不谎报成功。
 final class FavoriteRepository {
 
     private let client: HTTPClient
@@ -84,6 +88,9 @@ final class FavoriteRepository {
         let items: [FavoriteItem]
         let tids: Set<Int>
         let formhash: String?
+        /// 列表页里「删除该收藏」的原样链接（按 tid 归类）。
+        /// 删除链接带独立 `favid`，构造不出来，只能运行时解析。
+        let deleteHrefs: [Int: String]
     }
 
     private func loadList() async -> Result<Page, FavoriteError> {
@@ -109,7 +116,8 @@ final class FavoriteRepository {
             }
             return .success(Page(items: items,
                                  tids: Set(items.map(\.tid)),
-                                 formhash: Self.formhash(in: html)))
+                                 formhash: Self.formhash(in: html),
+                                 deleteHrefs: Self.deleteHrefs(in: html)))
         } catch let e as NetworkError {
             if case .cloudflareChallenge = e { return .failure(.pageUnavailable) }
             return .failure(.network(e.localizedDescription))
@@ -129,13 +137,26 @@ final class FavoriteRepository {
         if page.tids.contains(tid) == insert { return .success(insert) }
 
         let hash = page.formhash.map { "&formhash=\($0)" } ?? ""
-        let candidates: [String] = insert
-            ? ["my.php?item=favorites&action=add&type=thread&tid=\(tid)\(hash)",
-               "misc.php?action=favorite&tid=\(tid)&type=thread\(hash)",
-               "my.php?item=favorites&action=add&type=thread&favid=\(tid)\(hash)"]
-            : ["my.php?item=favorites&action=delete&type=thread&tid=\(tid)\(hash)",
-               "my.php?item=favorites&action=delete&type=thread&favid=\(tid)\(hash)",
-               "misc.php?action=favorite&action=delete&tid=\(tid)&type=thread\(hash)"]
+        let candidates: [String]
+        if insert {
+            candidates = [
+                // ① 权威地址：站点 PC 模板 `favoritewin` 弹层里的原样链接（不带 formhash）。
+                "my.php?item=favorites&tid=\(tid)",
+                "my.php?item=favorites&tid=\(tid)\(hash)",
+                "my.php?item=favorites&action=add&type=thread&tid=\(tid)\(hash)",
+                "misc.php?action=favorite&tid=\(tid)&type=thread\(hash)"
+            ]
+        } else {
+            var list: [String] = []
+            // ① 列表页自己给出的删除链接（含站点生成的 favid）——最可靠，优先。
+            if let href = page.deleteHrefs[tid] { list.append(href) }
+            list.append(contentsOf: [
+                "my.php?item=favorites&action=delete&type=thread&tid=\(tid)\(hash)",
+                "my.php?item=favorites&action=delete&type=thread&favid=\(tid)\(hash)",
+                "misc.php?action=favorite&action=delete&tid=\(tid)&type=thread\(hash)"
+            ])
+            candidates = list
+        }
 
         for path in candidates {
             do {
@@ -185,5 +206,35 @@ final class FavoriteRepository {
             if let r = Range(m.range(at: 1), in: html), let tid = Int(html[r]) { set.insert(tid) }
         }
         return set
+    }
+
+    /// 收藏列表页里「删除该收藏」的原样链接（按 tid 归类）。
+    ///
+    /// 为什么必须解析而不能拼：Discuz 的删除链接带**独立的收藏 id**（`favid`），
+    /// 由站点生成，用 tid 推不出来（红线：不硬编码表单参数）。
+    ///
+    /// 启发式：定位每个 `viewthread.php?tid=<tid>`（列表项的标题链接），
+    /// 在其后 4000 字窗口内找第一个含 `action=delete` 的 href ——
+    /// 列表行结构通常是「图标 · 标题链接 · 版块/时间 · 删除链接」。
+    /// 找不到就跳过（调用方仍会退回构造候选，并且**无论如何都以回读列表为准**）。
+    static func deleteHrefs(in html: String) -> [Int: String] {
+        var result: [Int: String] = [:]
+        guard let tidRe = try? NSRegularExpression(pattern: #"viewthread\.php\?tid=(\d+)"#) else { return result }
+        let ns = html as NSString
+        for m in tidRe.matches(in: html, range: NSRange(html.startIndex..., in: html)) {
+            guard let r = Range(m.range(at: 1), in: html), let tid = Int(html[r]) else { continue }
+            let window = ns.substring(from: m.range.location).prefix(4000)
+            guard let href = firstDeleteHref(in: String(window)) else { continue }
+            result[tid] = href.replacingOccurrences(of: "&amp;", with: "&")
+        }
+        return result
+    }
+
+    /// 文本里第一个形如 `href="...action=delete..."` 的链接。
+    private static func firstDeleteHref(in text: String) -> String? {
+        guard let re = try? NSRegularExpression(pattern: #"href=["']([^"']*action=delete[^"']*)["']"#) else { return nil }
+        guard let m = re.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+              let r = Range(m.range(at: 1), in: text) else { return nil }
+        return String(text[r])
     }
 }

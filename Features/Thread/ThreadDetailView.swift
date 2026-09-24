@@ -339,7 +339,7 @@ struct ThreadDetailView: View {
     // MARK: - 举报
 
     /// 论坛没有原生举报接口：先把该帖链接复制到剪贴板；
-    /// 若已登录，直接打开给管理员（`PreferenceStore.reportAdminUID`，默认 4d4y/UID 29）的私信，
+    /// 若已登录，直接打开给管理员（`PreferenceStore.reportAdminUID`，默认 4D4Y / UID 29）的私信，
     /// 并把链接**预填成草稿**（仍需用户自己点发送）。
     /// 未登录只复制链接并如实说明，**绝不假装举报已发出**。
     private func reportThread() {

@@ -15,12 +15,16 @@ final class PreferenceStore: ObservableObject {
     /// 占位符默认值（论坛最短字数规则用的凑字文本）。
     static let defaultReplyPlaceholder = "Peace&Love"
 
-    /// 举报私信的**默认收件人**：论坛管理员 `4d4y`，UID 29（由用户提供）。
+    /// 举报私信的**默认收件人**：论坛管理员 `4D4Y`，UID 29（用户名与 UID 均由用户确认）。
     /// 论坛没有原生举报接口，客户端采用「复制该帖链接 + 私信该账号」的方式。
     static let defaultReportAdminUID = 29
 
-    /// 上述默认收件人的显示名（仅用于私信页标题）。
-    static let defaultReportAdminName = "4d4y"
+    /// 上述默认收件人的用户名。
+    ///
+    /// ⚠️ 只用于私信页标题显示 —— 私信实际按 **UID** 发送
+    /// （`PMRepository.send(uid:message:)` → `pm.php?action=view&uid=`），
+    /// 所以这里的大小写即便与站点显示不完全一致，也不影响送达。
+    static let defaultReportAdminName = "4D4Y"
 
     private let defaults: UserDefaults
 

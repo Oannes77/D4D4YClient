@@ -64,7 +64,13 @@ final class HTTPClient {
         URL(string: path, relativeTo: baseURL)?.absoluteURL
     }
 
-    /// 模拟移动 Safari。此站对 UA 无特殊限制，但保留完整 UA 更接近正常浏览器。
+    /// 模拟移动 Safari。
+    ///
+    /// ⚠️ **此站按 User-Agent 分发模板**，不是「对 UA 无限制」：
+    /// 命中移动 UA → 精简的 `templates/wap/`；否则 → 完整 PC 模板。
+    /// 同一帖两套模板差一倍多（125KB vs 314KB），图片、附件、收藏入口**只在 PC 模板里**。
+    /// 客户端与**全部解析器、`Tests/Fixtures` 夹具**都建立在 WAP 模板之上，
+    /// 所以这里必须保持移动 UA —— 单独改它等于换掉所有页面结构（见 `docs/SiteFacts.md`）。
     private static let defaultHeaders: [String: String] = [
         "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
