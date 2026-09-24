@@ -35,6 +35,8 @@ struct HomeView: View {
     @State private var searchRequest: SearchRequest?
     /// 演示模式专用：离线样例流（不触发网络）。
     @State private var demoFeed: [HomeThreadItem] = []
+    /// 演示模式专用：离线夹具解析出的筛选条（同一个 `BoardFilterParser`）。
+    @State private var demoFilterBar: BoardFilterBar?
     @State private var selectedThread: HomeThreadItem?
     @State private var jumpToLast = false
     @State private var selectedUser: Int?
@@ -53,7 +55,16 @@ struct HomeView: View {
         return list.isEmpty ? Self.defaultBoards : list
     }
 
-    private var feed: [HomeThreadItem] { DemoMode.isOn ? demoFeed : viewModel.items }
+    private var feed: [HomeThreadItem] {
+        // 演示模式：初始用手写样例流（离线、截图稳定）；**一旦在演示里点了筛选**，
+        // `viewModel.items` 会有真实结果，此时改用真实结果 —— 筛选条就不会是「点了没反应」的死控件。
+        DemoMode.isOn && viewModel.items.isEmpty ? demoFeed : viewModel.items
+    }
+
+    /// 当前筛选条：线上取页面解析结果；演示模式取离线夹具里同一条（同一个解析器）。
+    private var activeFilterBar: BoardFilterBar? {
+        DemoMode.isOn ? (demoFilterBar ?? viewModel.filterBar) : viewModel.filterBar
+    }
 
     /// 当前用户 UID（未登录 / 拿不到时为 nil ⇒ 头像走中性默认图标，不发多余请求）。
     private var currentUserID: Int? {
@@ -73,6 +84,15 @@ struct HomeView: View {
                     onSelect: { select($0) },
                     onSwipe: { switchBoard(by: $0) }
                 )
+
+                // 板块筛选条：**分类在前、排序时间在后**，全部来自板块页自身链接。
+                // 演示模式用同一条（从离线夹具 PC 页面解析），保证「演示跑的 = 线上跑的」。
+                if let bar = activeFilterBar, !bar.isEmpty {
+                    BoardFilterBarView(bar: bar) { option in
+                        Task { await viewModel.applyFilter(option) }
+                    }
+                }
+
                 CollapsibleSearch(
                     text: $searchText,
                     collapsed: searchCollapsed,
@@ -243,6 +263,9 @@ struct HomeView: View {
     private func bootstrap() async {
         if DemoMode.isOn {
             demoFeed = DemoData.homeFeedDemo()
+            // 筛选条也从**离线夹具的真实 PC 页面**里解析（不是手编一张表）：
+            // 这样截图里看到的分类顺序、数量与线上完全一致。
+            demoFilterBar = DemoData.loadForumDisplayFixture()?.filterBar
             return
         }
         viewModel.attach(context: modelContext)

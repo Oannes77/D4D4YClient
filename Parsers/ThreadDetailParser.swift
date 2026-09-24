@@ -142,6 +142,11 @@ struct ThreadDetailParser {
             }
         }
 
+        // 文件型附件（rar / zip / pdf…）。
+        // 图片附件已经在上面进了正文图片网格，`AttachmentParser` 会主动跳过 `attachimg` 那些，
+        // 否则同一张图会在「正文图片」与「附件」两处各出现一次。
+        let attachments = container.map { AttachmentParser.parse(container: $0) } ?? []
+
         let id = Self.resolvePostID(realPID: realPID,
                                     floor: floor,
                                     authorName: authorName,
@@ -154,7 +159,8 @@ struct ThreadDetailParser {
                     createdAt: DiscuzDateParser.parse(createdAtRaw),
                     createdAtRaw: createdAtRaw,
                     htmlContent: htmlContent,
-                    isBlocked: isBlocked)
+                    isBlocked: isBlocked,
+                    attachments: attachments)
     }
 
     // MARK: - WAP 模板（兜底）

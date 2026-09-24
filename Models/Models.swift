@@ -39,7 +39,54 @@ struct Post: Identifiable, Hashable {
     let htmlContent: String
     /// 该楼内容被论坛屏蔽（div.locked：作者被禁止或删除）
     let isBlocked: Bool
+    /// 本楼的**文件型附件**（zip / pdf / rar…；图片附件不在此列，它们走正文图片网格）。
+    /// 默认空数组：老调用点无需改动。
+    var attachments: [PostFileAttachment] = []
 }
+
+/// 一个文件型附件（PC 模板 `div.postattachlist > dl.t_attachlist`，**不带** `attachimg` class）。
+///
+/// 真实页面原文（`viewthread_tid193033_page1_pc.html` 实测）：
+/// ```html
+/// <div class="postattachlist"><dl class="t_attachlist">
+///   <dt><img src="…/images/attachicons/rar.gif" …></dt>
+///   <dd><p class="attachname">
+///     <a href="attachment.php?aid=<token>&sid=xxx" id="aid216333">iSilo.rar</a> (309.58 KB)
+///     <div class="attach_popup"><div class="cornerlayger">
+///       <p>下载次数:8115</p><p>2004-7-22 01:02</p>
+///     </div></div>
+///   </p></dd>
+/// </dl></div>
+/// ```
+///
+/// ⚠️ 带 `attachimg` class 的是**图片**附件，已被正文图片网格覆盖，这里必须排除，否则同一张图会出现两次。
+///
+/// 命名注意：项目里另有一个 `PostAttachment`（在 `PostRepository.swift`，表示**要上传的文件载荷**：
+/// fileName / mimeType / data）。两者语义完全不同，所以这个叫 `PostFileAttachment`
+/// —— 顶层类型重名会直接编译失败（`invalid redeclaration`）。
+struct PostFileAttachment: Identifiable, Hashable {
+    /// 站点原样下载地址（含 token 与 `sid`，**不做任何改写** —— 那是站点的签名地址）。
+    let url: String
+    /// 文件名（锚文本，例：`iSilo.rar`）。
+    let title: String
+    /// 体积文案（页面里的 `(309.58 KB)`）；拿不到就是空串，不编造。
+    let sizeText: String
+    /// 下载次数（`下载次数:8115` 里的数字）；拿不到为 nil。
+    let downloadCount: Int?
+    /// 扩展名小写（rar / pdf / jpg…），用于挑图标；拿不到为空串。
+    let fileExtension: String
+
+    var id: String { url }
+
+    /// 一次性说明行：`309.58 KB · 下载 8115 次`（缺什么就不显示什么）。
+    var detailText: String {
+        var parts: [String] = []
+        if !sizeText.isEmpty { parts.append(sizeText) }
+        if let downloadCount { parts.append("下载 \(downloadCount) 次") }
+        return parts.joined(separator: " · ")
+    }
+}
+
 
 /// 分页信息。全部由页面 HTML 推导，不写死 URL。
 struct PageInfo: Hashable {
@@ -56,6 +103,8 @@ struct ThreadListPage {
     let forumName: String?
     let threads: [ForumThread]
     let pageInfo: PageInfo
+    /// 版块页顶部筛选条（分类 / 排序 / 时间）。WAP 模板或未解析到时为 nil，界面据此不显示筛选条。
+    var filterBar: BoardFilterBar? = nil
 }
 
 /// 帖子页解析结果。

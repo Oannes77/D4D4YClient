@@ -77,7 +77,12 @@ struct ThreadListParser {
 
         let pageInfo = PaginationParser.parse(document: document)
             ?? PageInfo(currentPage: 1, totalPages: 1, previousPageURL: nil, nextPageURL: nil)
-        return ThreadListPage(forumName: forumName, threads: threads, pageInfo: pageInfo)
+        // 筛选条：分类 / 排序 / 时间，全部取页面自身链接（WAP 模板没有 → nil）。
+        // 注意：**翻页会天然带着筛选** —— `PaginationParser` 取的是页面里的下一页链接，
+        // 而这个链接本身就带 `filter=type&typeid=…&page=2`，不需要客户端自己拼参数。
+        let filterBar = BoardFilterParser.parse(document: document)
+        return ThreadListPage(forumName: forumName, threads: threads,
+                              pageInfo: pageInfo, filterBar: filterBar)
     }
 
     private static func parsePCRow(_ row: Element, diagnostics: inout Diagnostics) -> ForumThread? {

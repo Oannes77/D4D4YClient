@@ -81,6 +81,10 @@ struct PostContent: View {
                 if !images.isEmpty {
                     imagesGrid
                 }
+
+                if !post.attachments.isEmpty {
+                    attachmentList
+                }
             }
         }
     }
@@ -124,6 +128,79 @@ struct PostContent: View {
                 .contentShape(Rectangle())
                 .onTapGesture { onImagesTap(images, pair.offset) }
             }
+        }
+    }
+
+    // MARK: - 文件型附件（zip / rar / pdf…）
+
+    /// 附件区：列出文件名 + 体积 / 下载次数，右侧一键分享。
+    ///
+    /// **为什么只做「分享」不做「下载」**：iOS 上没有统一的「下载到哪」；
+    /// 而系统分享面板本身就含「存储到文件 / 用浏览器打开 / 拷贝链接」三条真实出路，
+    /// 所以这是**真能用的路径**，而不是拿一个假的进度条假装下载成功。
+    /// 另外附件的实际下载在站点侧可能需要登录 —— 界面上如实提示一句，不含糊。
+    private var attachmentList: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: "paperclip")
+                Text("附件 \(post.attachments.count) 个 · 下载需论坛登录")
+            }
+            .font(.footnote)
+            .foregroundStyle(Color.appTextSecondary(scheme))
+
+            ForEach(post.attachments) { file in
+                HStack(spacing: 10) {
+                    Image(systemName: Self.iconName(for: file.fileExtension))
+                        .font(.title3)
+                        .foregroundStyle(Color.appPrimary(scheme))
+                        .frame(width: 26)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(file.title)
+                            .font(.subheadline)
+                            .foregroundStyle(Color.appTextPrimary(scheme))
+                            .lineLimit(1)
+                        if !file.detailText.isEmpty {
+                            Text(file.detailText)
+                                .font(.caption2)
+                                .foregroundStyle(Color.appTextTertiary(scheme))
+                        }
+                    }
+
+                    Spacer(minLength: 8)
+
+                    if let url = HTTPClient.absoluteURL(path: file.url) {
+                        ShareLink(item: url) {
+                            Image(systemName: "square.and.arrow.up")
+                                .font(.subheadline)
+                                .foregroundStyle(Color.appPrimary(scheme))
+                                .padding(6)
+                        }
+                        .accessibilityLabel("分享附件 \(file.title)")
+                    }
+                }
+                .padding(.vertical, 6)
+                .padding(.horizontal, 10)
+                .background(Color.appSurfaceSecondary(scheme))
+                .cornerRadius(10)
+            }
+        }
+    }
+
+    /// 按扩展名挑一个系统图标（辨类型用，认不出就用通用文档图标，不猜）。
+    static func iconName(for ext: String) -> String {
+        switch ext {
+        case "rar", "zip", "7z", "tar", "gz":     return "doc.zipper"
+        case "pdf":                                return "doc.richtext"
+        case "doc", "docx", "pages":               return "doc.text"
+        case "xls", "xlsx", "csv":                 return "tablecells"
+        case "ppt", "pptx", "key":                 return "rectangle.on.rectangle"
+        case "txt", "md", "log":                   return "doc.plaintext"
+        case "mp3", "wav", "m4a", "flac":          return "waveform"
+        case "mp4", "mov", "avi", "mkv":           return "film"
+        case "exe", "apk", "dmg", "ipa":           return "shippingbox"
+        case "jpg", "jpeg", "png", "gif", "webp":  return "photo"
+        default:                                   return "doc"
         }
     }
 

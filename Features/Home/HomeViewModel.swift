@@ -26,11 +26,16 @@ final class HomeViewModel: ObservableObject {
     @Published private(set) var isLoadingMore = false
     /// 当前板块标题（导航栏用；优先取页面解析出的版块名）
     @Published private(set) var boardTitle: String = ""
+    /// 板块页顶部筛选条（主题分类 / 排序 / 时间）。页面没有就是 nil，界面据此不显示。
+    @Published private(set) var filterBar: BoardFilterBar?
 
     // MARK: - 内部状态
 
     private let repository: ForumRepositoryProtocol
     private var currentFid: Int?
+    /// 当前实际请求的地址（筛选生效时是那个筛选链接）。
+    /// 下拉刷新要「刷新当前视图」而不是「回到默认第一页」，否则一刷新筛选就丢了。
+    private var currentPath: String?
     private var pageInfo: PageInfo?
     private var context: ModelContext?
     private var detectTask: Task<Void, Never>?
@@ -48,31 +53,54 @@ final class HomeViewModel: ObservableObject {
 
     // MARK: - 加载
 
-    /// 切换板块：加载该板块第一页（已加载过同一板块则不重复请求）。
+    /// 切换板块：加载该板块第一页。
+    ///
+    /// - 同一板块且仍在**默认视图**（没有套筛选）时不重复请求；
+    /// - 带着筛选时点同一个板块 = 回到该板块的默认视图（筛选是「视图状态」，切板块应清掉）。
     func selectBoard(fid: Int, name: String) async {
-        if currentFid == fid, case .loaded = state { return }
+        if currentFid == fid, currentPath == nil, case .loaded = state { return }
         boardTitle = name
         await loadFirstPage(fid: fid)
     }
 
-    /// 下拉刷新：重新加载当前板块第一页。
+    /// 下拉刷新：**刷新当前视图**（当前若有筛选，刷新后仍然停在那个筛选上）。
     func refresh() async {
-        guard let fid = currentFid else { return }
-        await loadFirstPage(fid: fid)
+        if let path = currentPath {
+            await load(path: path)
+        } else if let fid = currentFid {
+            await loadFirstPage(fid: fid)
+        }
     }
 
     func loadFirstPage(fid: Int) async {
         currentFid = fid
+        currentPath = nil
+        await load(path: "forumdisplay.php?fid=\(fid)")
+    }
+
+    /// 应用板块筛选条上的某一项：直接请求**页面里那个链接**。
+    ///
+    /// 不拼参数（`filter=` / `orderby=` 都由站点给），选中态由返回页面自己标记，
+    /// 所以客户端不需要维护「当前选中是谁」—— 一次请求就把列表、分页、筛选条全部换成新的。
+    func applyFilter(_ option: BoardFilterOption) async {
+        guard !option.isSelected else { return }
+        currentPath = option.path
+        await load(path: option.path)
+    }
+
+    /// 按站内相对地址加载第一屏（地址来自页面自身：板块默认页或某个筛选链接）。
+    private func load(path: String) async {
         state = .loading
         do {
-            let page = try await repository.threads(fid: fid, page: 1)
+            let page = try await repository.threads(pageURL: path)
             pageInfo = page.pageInfo
+            filterBar = page.filterBar
             if let name = page.forumName, !name.isEmpty { boardTitle = name }
             items = makeItems(page.threads)
-            state = items.isEmpty ? .failed("该板块暂无主题") : .loaded
+            state = items.isEmpty ? .failed("该筛选下暂无主题") : .loaded
             detectMedia(for: page.threads)
         } catch {
-            Log.parser.error("首页加载失败: \(String(describing: error), privacy: .public)")
+            Log.parser.error("板块加载失败(\(path, privacy: .public)): \(String(describing: error), privacy: .public)")
             state = .failed(error.localizedDescription)
         }
     }
