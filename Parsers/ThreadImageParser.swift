@@ -41,14 +41,21 @@ struct ThreadImageParser {
     /// 解析首帖纯文本摘要（首页卡片 3 行预览用）。
     ///
     /// 与图片检测共用同一次 viewthread 请求，不额外发请求。
-    /// 取「一楼正文 div.detailcon」，缺失时回退第一条回复 div.replycon。
+    ///
+    /// ⚠️ 必须**同时支持两套模板的容器名** —— 元数据检测走的是 PC 模板
+    /// （为了拿到附件图，见 `ImageMetadataRepository.detect`），而其余流程走 WAP：
+    /// - WAP：首帖 `div.detailcon`、回复 `div.replycon`
+    /// - PC ：首帖 `td.t_msgfont`（`id="postmessage_<pid>"`）
+    /// 顺序仍是「先 WAP 首帖 → WAP 回复 → PC 首帖」，对两套模板都能取到。
     /// - Parameter limit: 截断字数（默认 120，首页 3 行足够）。
     static func parsePreviewText(from html: String, limit: Int = 120) -> String? {
         do {
             let doc = try SwiftSoup.parse(html)
-            let firstBlock = try doc.select("div.detailcon").first()
-            let replyBlock = try doc.select("div.replycon").first()
-            guard let block = firstBlock ?? replyBlock else { return nil }
+            let wapFirst = try doc.select("div.detailcon").first()
+            let wapReply = try doc.select("div.replycon").first()
+            let pcFirst = try doc.select("td.t_msgfont").first()
+                ?? doc.select("[id^=postmessage_]").first()
+            guard let block = wapFirst ?? wapReply ?? pcFirst else { return nil }
             var text = try block.text()
             text = text.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
                 .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -121,14 +128,20 @@ struct ThreadImageParser {
     // MARK: - 过滤规则
 
     /// 拒绝列表：头像 / 表情 / 图标 / 模板资源（基于真实 4D4Y HTML 关键词）。
+    ///
+    /// `images/attachicons`、`images/group`、`images/avatars` 三项是 PC 模板特有的噪声
+    /// （PC 页 `<img>` 数量约为 WAP 的 10 倍以上），此前在实测探查中已确认属于模板资源。
     private static let excludedKeywords: [String] = [
         "uc_server/data/avatar",   // 作者头像
+        "images/avatars",          // 头像（PC 模板另一路径）
         "images/smilies",          // 表情
         "smilies",                 // 表情（别名）
         "images/icons",            // 类型 / 状态图标
+        "images/attachicons",      // 附件类型小图标（PC 模板）
+        "images/group",            // 用户组图标（PC 模板）
         "images/default",          // 模板“赞/踩”等图标（agree.gif 等）
         "templates/",              // 模板资源（logo / fuser 等）
-        "images/common",           // 通用模板图标
+        "images/common",           // 通用模板图标（PC 附件图的 none.gif 占位在此）
         "css/", "static/",         // 样式 / 静态资源
         ".js", ".css", ".woff", ".woff2",  // 脚本 / 样式 / 字体（绝不应作为图片）
         "challenge-platform", "cloudflare", // 拦截页脚本（防御性）
