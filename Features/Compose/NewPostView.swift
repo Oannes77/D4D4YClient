@@ -18,6 +18,10 @@ struct NewPostView: View {
     let defaultFid: Int
 
     @State private var fid: Int
+    /// 当前板块的**主题分类**（站点每个板块不同，运行时从板块页解析，不硬编码）。
+    @State private var categories: [BoardCategory] = []
+    /// 选中的分类 `typeid`；该板块没有分类时为 nil（此时不显示分类选择，也不提交该字段）。
+    @State private var selectedTypeID: Int?
     @State private var title = ""
     /// 正文从空开始；占位符不进输入框（见正文下方的斜体说明），发布时自动隔行附加。
     @State private var message = ""
@@ -57,6 +61,34 @@ struct NewPostView: View {
         boards.first(where: { $0.id == fid })?.name ?? "板块 \(fid)"
     }
 
+    /// 已选分类名（未选为 nil）。
+    private var selectedCategoryName: String? {
+        guard let selectedTypeID else { return nil }
+        return categories.first(where: { $0.id == selectedTypeID })?.name
+    }
+
+    // MARK: - 主题分类
+
+    /// 拉取当前板块的主题分类。
+    ///
+    /// - 演示模式：从**离线夹具的真实板块页**解析（同一个解析器），不联网；夹具的 fid=14 才有分类，
+    ///   其他板块按「没有分类」处理（不发假数据）。
+    /// - 线上：`ForumRepository.categories(fid:)`。拉不到就当作没有分类 ⇒ 不显示下拉，
+    ///   **也不会因此挡住发帖**（不发 `typeid`，由服务器按它自己的规则判定）。
+    private func loadCategories() async {
+        if DemoMode.isOn {
+            categories = fid == 14
+                ? (DemoData.loadForumCategoryFixture() ?? [])
+                : []
+        } else {
+            categories = (try? await ForumRepository().categories(fid: fid)) ?? []
+        }
+        // 换板块后原来的 typeid 可能不属于新板块 —— 清掉，避免提交一个张冠李戴的分类。
+        if let selectedTypeID, !categories.contains(where: { $0.id == selectedTypeID }) {
+            self.selectedTypeID = nil
+        }
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -80,6 +112,33 @@ struct NewPostView: View {
                             .padding(12)
                             .background(Color.appSurfaceSecondary(scheme))
                             .cornerRadius(10)
+                        }
+                    }
+
+                    // 主题分类（站点的 `typeid`）：**分类是发帖时贴给主题的标签**，
+                    // 每个板块各不相同，所以换板块要重新解析一次；该板块没开分类就整块不显示。
+                    if !categories.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            fieldLabel("分类（该板块的主题分类）")
+                            Menu {
+                                ForEach(categories) { category in
+                                    Button(category.name) { selectedTypeID = category.id }
+                                }
+                            } label: {
+                                HStack {
+                                    Text(selectedCategoryName ?? "请选择分类")
+                                        .foregroundStyle(selectedCategoryName == nil
+                                                         ? Color.appTextTertiary(scheme)
+                                                         : Color.appTextPrimary(scheme))
+                                    Spacer()
+                                    Image(systemName: "chevron.up.chevron.down")
+                                        .font(.caption)
+                                        .foregroundStyle(Color.appTextTertiary(scheme))
+                                }
+                                .padding(12)
+                                .background(Color.appSurfaceSecondary(scheme))
+                                .cornerRadius(10)
+                            }
                         }
                     }
 
@@ -168,6 +227,8 @@ struct NewPostView: View {
             .onChange(of: photoItems) { _, items in
                 Task { await loadPickedPhotos(items) }
             }
+            // 换板块 ⇒ 重新解析该板块的主题分类（分类是按板块配的）。
+            .task(id: fid) { await loadCategories() }
             .fileImporter(isPresented: $showFileImporter,
                           allowedContentTypes: [.item],
                           allowsMultipleSelection: true) { result in
@@ -202,7 +263,8 @@ struct NewPostView: View {
         }
         Task {
             let result = await PostRepository().submitNewThread(
-                fid: fid, subject: finalSubject, message: body, attachments: payload
+                fid: fid, subject: finalSubject, message: body, attachments: payload,
+                typeID: selectedTypeID
             )
             isPosting = false
             switch result {

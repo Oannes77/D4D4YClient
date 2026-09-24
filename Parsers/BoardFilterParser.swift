@@ -1,9 +1,9 @@
 import Foundation
 import SwiftSoup
 
-/// 解析板块页顶部的筛选条（**PC 模板**；WAP 模板没有这套工具栏，返回 nil 即可）。
+/// 解析板块页顶部的工具栏（**PC 模板**；WAP 模板没有这套工具栏）。
 ///
-/// 真实页面结构（`forumdisplay.php?fid=14`，游客可见，`tests/Fixtures/forumdisplay_fid14_page1_pc.html` 实测）：
+/// 真实页面结构（`forumdisplay.php?fid=14`，游客可见，`Tests/Fixtures/forumdisplay_fid14_page1_pc.html` 实测）：
 ///
 /// ```html
 /// <!-- ① 主题分类：独立容器，每个板块各不相同 -->
@@ -33,51 +33,19 @@ enum BoardFilterParser {
     /// 不做的筛选项（用户判定用处不大）。命中这些的链接一律跳过。
     private static let skippedFilters = ["digest", "poll", "activity"]
 
+    // MARK: - 板块排序条（首页用）
+
+    /// 排序 / 时间条。**不含主题分类** —— 分类是发帖时的选项，见 `categories(document:)`。
     static func parse(document: Document) -> BoardFilterBar? {
-        let categories = parseCategories(document: document)
         let sorts = parseSorts(document: document)
-        let bar = BoardFilterBar(categories: categories, sorts: sorts)
+        let bar = BoardFilterBar(sorts: sorts)
         if bar.isEmpty {
-            Log.parser.info("BoardFilterParser 未解析到筛选条（WAP 模板或版块无分类）")
+            Log.parser.info("BoardFilterParser 未解析到排序条（WAP 模板或版块无排序入口）")
             return nil
         }
-        Log.parser.info("BoardFilterParser 分类 \(categories.count) 项 / 排序时间 \(sorts.count) 项")
+        Log.parser.info("BoardFilterParser 排序时间 \(sorts.count) 项")
         return bar
     }
-
-    // MARK: - 主题分类
-
-    private static func parseCategories(document: Document) -> [BoardFilterOption] {
-        var options: [BoardFilterOption] = []
-
-        // 「全部」取自工具栏里那个**既没有 filter 也没有 orderby** 的当前项
-        // （`<li class="current"><a href="forumdisplay.php?fid=14&sid=xxx">全部</a></li>`）。
-        if let toolbar = (try? document.select("ul.itemfilter").first()) ?? nil {
-            for anchor in (try? toolbar.select("a")) ?? Elements() {
-                let href = clean((try? anchor.attr("href")) ?? "")
-                guard !href.isEmpty, !href.contains("filter="), !href.contains("orderby=") else { continue }
-                let title = ((try? anchor.text()) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !title.isEmpty else { continue }
-                options.append(BoardFilterOption(title: title,
-                                                 path: href,
-                                                 isSelected: isCurrent(anchor)))
-                break        // 工具栏里这样的项只会有一个
-            }
-        }
-
-        // 分类列表
-        for anchor in (try? document.select("div.threadtype a[href*=filter=type]")) ?? Elements() {
-            let href = clean((try? anchor.attr("href")) ?? "")
-            guard href.contains("typeid=") else { continue }
-            let title = ((try? anchor.text()) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !title.isEmpty else { continue }
-            guard !options.contains(where: { $0.path == href }) else { continue }
-            options.append(BoardFilterOption(title: title, path: href, isSelected: isCurrent(anchor)))
-        }
-        return options
-    }
-
-    // MARK: - 排序与时间
 
     private static func parseSorts(document: Document) -> [BoardFilterOption] {
         guard let toolbar = (try? document.select("ul.itemfilter").first()) ?? nil else { return [] }
@@ -96,6 +64,30 @@ enum BoardFilterParser {
             options.append(BoardFilterOption(title: title, path: href, isSelected: isCurrent(anchor)))
         }
         return options
+    }
+
+    // MARK: - 主题分类（发帖页用）
+
+    /// 某板块的**主题分类**：从板块页 `div.threadtype` 里的分类链接解析出 `typeid` 与名字。
+    ///
+    /// `forumdisplay.php?fid=14&filter=type&typeid=10` → `BoardCategory(id: 10, name: "心得技巧")`。
+    /// 该板块没有开分类时返回空数组（发帖页据此不显示分类选择，不摆一个空下拉）。
+    static func categories(document: Document) -> [BoardCategory] {
+        var result: [BoardCategory] = []
+        for anchor in (try? document.select("div.threadtype a[href*=filter=type]")) ?? Elements() {
+            let href = clean((try? anchor.attr("href")) ?? "")
+            guard let range = href.range(of: #"typeid=(\d+)"#, options: .regularExpression),
+                  let typeID = Int(href[range].dropFirst("typeid=".count)) else { continue }
+            let name = ((try? anchor.text()) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !name.isEmpty else { continue }
+            guard !result.contains(where: { $0.id == typeID }) else { continue }
+            result.append(BoardCategory(id: typeID, name: name))
+        }
+        return result
+    }
+
+    static func categories(html: String) throws -> [BoardCategory] {
+        categories(document: try SwiftSoup.parse(html))
     }
 
     // MARK: - 工具

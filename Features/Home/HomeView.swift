@@ -22,10 +22,6 @@ struct HomeView: View {
     @ObservedObject private var favorites = FavoritesStore.shared
     /// 本地已拉黑作者（纯客户端行为，与论坛侧处罚无关）。
     @Query private var blockedUsers: [BlockedUser]
-    /// 当前会话：发帖入口左侧头像用（登录后换真人头像）。
-    /// 直接观察共享单例而不是走 `@EnvironmentObject` —— 首页在各处（含截图路由）被复用，
-    /// 少一个「环境里没注入就崩」的隐患。
-    @ObservedObject private var session = SessionManager.shared
     @StateObject private var viewModel = HomeViewModel()
 
     @State private var selectedFid: Int = 2
@@ -66,15 +62,6 @@ struct HomeView: View {
         DemoMode.isOn ? (demoFilterBar ?? viewModel.filterBar) : viewModel.filterBar
     }
 
-    /// 当前用户 UID（未登录 / 拿不到时为 nil ⇒ 头像走中性默认图标，不发多余请求）。
-    private var currentUserID: Int? {
-        guard let uid = session.state.session?.uid, uid > 0 else { return nil }
-        return uid
-    }
-
-    /// 当前用户名（头像回退时只在无障碍标签里用，不显示占位文字）。
-    private var currentUserName: String { session.state.session?.username ?? "" }
-
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
@@ -97,14 +84,9 @@ struct HomeView: View {
                     text: $searchText,
                     collapsed: searchCollapsed,
                     placeholder: "搜索 \(viewModel.boardTitle.isEmpty ? "4D4Y" : viewModel.boardTitle)",
-                    onSubmit: submitSearch
+                    onSubmit: submitSearch,
+                    onCompose: { showCompose = true }
                 )
-
-                // 发帖入口（取代原右下角 FAB —— FAB 悬浮会压住列表正文）。
-                ComposeEntryBar(
-                    authorID: currentUserID,
-                    authorName: currentUserName
-                ) { showCompose = true }
 
                 content
             }

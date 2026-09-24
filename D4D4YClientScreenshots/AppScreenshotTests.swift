@@ -26,6 +26,10 @@ final class AppScreenshotTests: XCTestCase {
         let tapElement: String?
         /// 可选：点开后等待出现的文案，确认菜单真的展开了。
         let tapWaitText: String?
+        /// 可选：截图前**先下拉一次**。
+        /// 用于「默认收起、下拉才出现」的界面（首页的搜索+发帖那一行）——
+        /// 不下拉的话那一行永远是收起的，截图什么也证明不了。
+        let pullDown: Bool
         /// 可选：附件名后缀。同一界面需要拍多张不同状态时用来区分（默认用 `screen`）。
         let name: String?
 
@@ -35,6 +39,7 @@ final class AppScreenshotTests: XCTestCase {
              scrollToElement: String? = nil,
              tapElement: String? = nil,
              tapWaitText: String? = nil,
+             pullDown: Bool = false,
              name: String? = nil) {
             self.screen = screen
             self.waitElement = waitElement
@@ -42,6 +47,7 @@ final class AppScreenshotTests: XCTestCase {
             self.scrollToElement = scrollToElement
             self.tapElement = tapElement
             self.tapWaitText = tapWaitText
+            self.pullDown = pullDown
             self.name = name
         }
     }
@@ -53,6 +59,10 @@ final class AppScreenshotTests: XCTestCase {
         // ① 首页：被拉黑作者的主题显示「-已拉黑-」占位
         //    （Demo 流把被拉黑的作者放在第 2 条，确保占位落在首屏内 —— 第 1 条带大图很高）
         Target(screen: "home",         waitElement: "home-post-open", settle: 1.2),
+        // ①b 首页顶部那一行（搜索 + 发帖）**默认是收起的**，必须下拉一次才看得见 ——
+        //    否则截图里永远是空的，等于没验。下拉后应看到「🔍 搜索 Discovery … [发帖]」一整排。
+        Target(screen: "home",         waitElement: "home-post-open", settle: 1.0,
+               pullDown: true, name: "homeSearchCompose"),
         // ② 详情页操作栏：分享改为菜单（系统分享 / 分享给好友）+ 「举报」+ 新增「关注主题」铃铛
         //    首帖正文很长，操作栏在首屏之外 —— 先滚进可视区，否则只能拍到正文，验收点根本看不到。
         Target(screen: "thread",       waitElement: "detail-reply",   settle: 0.6,
@@ -156,6 +166,12 @@ final class AppScreenshotTests: XCTestCase {
 
             // 等关键元素出现，确认界面真正渲染完成。
             waitForAnchor(app, target)
+
+            // 「默认收起、下拉才出现」的界面：先下拉一次再截。
+            if target.pullDown {
+                app.swipeDown()
+                Thread.sleep(forTimeInterval: 0.6)
+            }
 
             // 需要验收的元素若在首屏之外（例如长首帖下方的操作栏），先滚进可视区再拍。
             if let id = target.scrollToElement {

@@ -68,6 +68,17 @@ enum DemoData {
         return try? ThreadListParser.parse(html: html)
     }
 
+    /// 演示模式：从**离线板块夹具**解析主题分类（同一个 `BoardFilterParser`，不手编分类表）。
+    /// fid=14 的分类实测是：心得技巧 / 绿色汉化 / 游戏 / 多媒体 / 数据库 / 实用工具 / ROM /
+    /// 硬件报告 / HPC / 求助 / 站务（共 11 个）。
+    static func loadForumCategoryFixture() -> [BoardCategory]? {
+        guard let url = Bundle.main.url(forResource: "forumdisplay_fid14_page1_pc", withExtension: "html"),
+              let data = try? Data(contentsOf: url) else { return nil }
+        let html = String(data: data, encoding: String.Encoding(rawValue: 2147485234))
+            ?? String(data: data, encoding: .utf8) ?? ""
+        return try? BoardFilterParser.categories(html: html)
+    }
+
     /// 帖子详情演示用夹具（tid → 随 App 打包的资源名）。
     ///
     /// 两份都是**站点 PC 模板的真实页面**（与生产路径同一套解析器），

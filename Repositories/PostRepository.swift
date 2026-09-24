@@ -85,13 +85,14 @@ final class PostRepository {
     ///   - subject: 标题；为空时由调用方先行补全（Discuz 多数版块禁止空标题）。
     ///   - message: 正文（已含自动附加的占位符）。
     func submitNewThread(fid: Int, subject: String, message: String,
-                         attachments: [PostAttachment] = []) async -> Result<PostedThread, PostError> {
+                         attachments: [PostAttachment] = [],
+                         typeID: Int? = nil) async -> Result<PostedThread, PostError> {
         // 1) 动态加载 + 解析（绝不跳过）
         let formResult = await loadNewThreadForm(fid: fid)
         switch formResult {
         case .success(let html):
             return await submit(withHTML: html, fid: fid, subject: subject,
-                                message: message, attachments: attachments)
+                                message: message, attachments: attachments, typeID: typeID)
         case .failure(let error):
             return .failure(error)
         }
@@ -99,7 +100,8 @@ final class PostRepository {
 
     private func submit(withHTML html: String, fid: Int,
                         subject: String, message: String,
-                        attachments: [PostAttachment]) async -> Result<PostedThread, PostError> {
+                        attachments: [PostAttachment],
+                        typeID: Int?) async -> Result<PostedThread, PostError> {
         guard let region = DiscuzFormParser.formRegion(in: html, requiring: #"name=["']message["']"#) else {
             return .failure(.parseFailure("未找到发帖表单（可能非登录态或页面异常）"))
         }
@@ -127,6 +129,10 @@ final class PostRepository {
         // 3) 拼装字段：全部 hidden + 标题 + 正文（尾部追加附件引用）+ 提交按钮
         var fields = form.hiddenFields
         fields["subject"] = subject
+
+        // 主题分类（`typeid`）：字段名取自参考实现 `docs/RefProject.md` §4 的表格
+        // （站点发帖表单里就是 `typeid`）。用户没选就不覆盖页面自带的值，不猜。
+        if let typeID { fields["typeid"] = String(typeID) }
 
         var body = message
         if !uploaded.isEmpty {
