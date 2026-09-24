@@ -1,0 +1,163 @@
+# Sprint 18 · 整体切到 PC 模板（图片/附件真正可用）
+
+> 一句话：**把客户端的全局 User-Agent 从移动 Safari 换成桌面 Chrome/Edge**，
+> 于是站点返回完整 PC 模板 —— 帖子配图、附件图、发帖上传、关注入口全部真实可用。
+>
+> 触发：用户质问「GitHub 上有人做过这个程序，让你参考，为什么到这个阶段还在讨论 web 还是 PC」。
+> 排查后确认：**参考实现（`webrules/4d4y`）从第一天就用桌面 UA**，
+> 而我们从立项起用移动 UA，是**没有被讲明的技术选型**，它正是「图片看不到」的根因。
+
+---
+
+## 一、根因（一句话说清）
+
+站点按 User-Agent 分发两套模板：
+
+| UA | 模板 | 后果 |
+|---|---|---|
+| 移动 Safari（改前） | `templates/wap/` | 正文极少配图；附件图**完全不渲染**；无查看数；发帖页无上传域 |
+| 桌面 Chrome（改后） | 完整 PC 模板 | 正文图 + 附件图齐全；有查看数；`form#imgattachform` 提供上传凭据 |
+
+同一帖实测：WAP 125KB / PC 314KB；`<img>` 6 个 / 178 个。
+
+---
+
+## 二、改了什么（解析与网络层 11 个文件 + 新增关注链路）
+
+| 文件 | 改动 |
+|---|---|
+| `Network/HTTPClient.swift` | `defaultHeaders` 换桌面 Chrome/Edge UA（参考实现同款），补齐 `Referer` / `Upgrade-Insecure-Requests` / `Cache-Control` / `Accept-Language`。删除只用于单次覆盖的 `desktopHeaders` 与 `mobileUserAgent` —— 现在**全站只有一套头**。 |
+| `Repositories/ImageMetadataRepository.swift` | 去掉 `desktopHeaders` 覆盖（已无意义），更新注释 |
+| `Parsers/ThreadListParser.swift` | **重写**：PC 优先（`tbody[id^=normalthread_]` + `span#thread_<tid>>a` + `td.author cite>a` + `td.nums>strong/em` + `td.lastpost`），WAP 兜底。**新增查看数**。 |
+| `Parsers/ThreadDetailParser.swift` | **重写**：PC 优先，以 `a[id^=postnum]` 为**楼层锚点**向上找 `table`（因此屏蔽楼也能列出）。新增 `div#threadtitle h1` 标题解析；把 `div.postattachlist img[file]` 的真实地址以 `<img>` 追加到正文，供图片区提取。WAP 兜底保留。 |
+| `Parsers/PaginationParser.swift` | PC 优先（`div.pages > strong` / `a.next` / `a.last`），WAP 兜底；新增 `strippingSessionID` —— PC 链接带 `&sid=…`，我们始终带 Cookie，**不需要它在 URL 里传递**。 |
+| `Parsers/ForumMenuParser.swift` | 容器候选由单一 `#silder_l` 扩为 5 个 + **整页扫描兜底**；子版块判定改为沿父链看 `sub`/`child`/`dd`。 |
+| `Parsers/ThreadImageParser.swift` | 扫描范围由整页 / `td.t_msgfont` 改为 **`div.postmessage`**（附件图在 `t_msgfont` 之外，只取前者会漏掉全部附件图）；过滤规则**不再要求同域**（老帖图多在外链图床），改为「非噪声 + 非广告域」。 |
+| `Parsers/DiscuzFormParser.swift` | 新增 `attachmentUploadKeys(in:)` —— 解析 `form#imgattachform` 的 `uid`/`hash`。 |
+| `Repositories/PostRepository.swift` | 附件上传**按 SWFUpload 两步协议重写**（见下）。 |
+| `Features/Thread/PostContent.swift` | `extractImageURLs` 改为直接复用 `ThreadImageParser`（单一真相，且优先取 `file` 属性）。 |
+| `Models/MySpaceModels.swift` | 🔴 修 bug：`isUserList` 由 `.friends \|\| .follows` 改为只 `.friends` —— **「关注」是主题型**（`my.php?item=attention&action=add&tid=`，参数是 tid），归为用户型会让列表一条都认不出。 |
+
+### 附件上传：从「错的做法」改成正确协议
+
+| | 改前（**错的**） | 改后（参考实现验证过） |
+|---|---|---|
+| 流程 | 文件与正文塞进**同一个** multipart 请求 | **两步**：① 先传文件换 `aid`；② 再普通 GBK 表单发帖 |
+| 第一步 | — | `POST misc.php?action=swfupload&operation=upload&simple=1&type=image\|attach`，字段 `uid` / `hash` / `Filedata`（**原始文件名**）→ 响应 `DISCUZUPLOAD\|0\|<aid>` |
+| 第二步 | — | `POST post.php?action=newthread&…`，正文尾追加 `[attachimg]<aid>[/attachimg]`（图片）或 `[attach]<aid>[/attach]`，并带 `attachnew[<aid>][description]=` |
+| 失败处理 | — | 任一附件失败**整体中止**，不发「正文与附件不符」的半个帖子 |
+
+---
+
+## 二之二、「关注」接入（本轮顺手补完的欠账）
+
+站点 PC 模板的 `favoritewin` 弹层里，收藏与关注是**并排的两个入口**：
+
+```html
+<a onclick="ajaxget('my.php?item=favorites&tid=193033', 'favorite_msg')">[收藏此主题]</a>
+<a onclick="ajaxget('my.php?item=attention&action=add&tid=193033', 'favorite_msg')">[关注此主题的新回复]</a>
+```
+
+两个地址的参数都是 **tid** ⇒ 4D4Y（Discuz! 7.2）的「关注」关注的是**主题**，不是人。
+此前把「关注」归为用户型列表（按 `space.php?uid=` 抽取），会**一条都认不出来**；
+`Shared/DemoData.swift` 还让「关注」返回「本站没有这个栏目」，也是错的。
+本轮一并修正：
+
+| 文件 | 改动 |
+|---|---|
+| `Repositories/AttentionRepository.swift` | 🆕 关注数据层：`my.php?item=attention`；add 用站点原样地址，remove 走「列表页自带删除链接优先 + 候选兜底」，**一律回读列表确认**，确认不了返回 `.unconfirmed` |
+| `Core/AttentionStore.swift` | 🆕 关注状态单例（与 `FavoritesStore` 同构）；Demo 模式用 `DemoData.attentionDemo()` |
+| `Features/Thread/PostDetailRow.swift` | 操作栏加第六个图标：铃铛（`post-attention`），实心 = 已关注 |
+| `Features/Thread/ThreadDetailView.swift` | 接 `AttentionStore`，`toggleAttendThread()`（未登录先给登录入口，绝不假装成功） |
+| `Models/MySpaceModels.swift` | 修 `isUserList`（只认 `.friends`）；新增 `hasExternalEntry`（关注的入口不在 `my.php` 导航里，不能凭导航缺项判「本站没有」） |
+| `Repositories/MySpaceRepository.swift` | `sectionMissing` 判定加上 `hasExternalEntry` 例外 |
+| `Features/Profile/MySpaceListView.swift` | 空态文案「你还没有关注任何主题」（原来是「关注的人」） |
+| `Shared/DemoData.swift` | 「关注」改为返回**主题型**样例，与真实口径一致 |
+| `Core/Authentication/SessionManager.swift` | 登出 / 掉线时清 `FavoritesStore` 与 `AttentionStore` 的内存状态 —— 否则游客会看到上一账号的实心星标 / 铃铛，属于替游客「假装」服务器状态 |
+
+---
+
+## 二之三、把站点事实钉进单元测试（新增 7 条）
+
+新增 PC 夹具（`Tests/Fixtures/*_pc.html`）之后，用 XCTest 把这些**只能在真实页面上验证**的事实固定下来，
+以后谁改错了会立刻红：
+
+| 测试 | 钉住的事实 |
+|---|---|
+| `testThreadListParser_pcTemplate` | 75 条；tid=193033 的标题/作者/分类/回复数/**浏览量 673371**；匿名帖 `authorID == nil` |
+| `testPaginationParser_pcTemplate_listPage1` | 第 1 页 / 共 919 页；next = `forumdisplay.php?fid=14&page=2`（**`&sid=` 必须被剥掉**） |
+| `testThreadDetailParser_pcTemplate` | 50 楼（含 1 屏蔽楼）；标题去掉 `[分类]` 前缀且分类被提取 |
+| `testThreadDetailParser_pcTemplate_attachmentImageAppended` | 附件图（`file` 属性、位于 `t_msgfont` 之外）被追加进楼层正文 |
+| `testThreadImageParser_pcTemplate_keepsExternalAndAttachmentImages` | 过滤后保留 6 张 = 4 张外链图床 + 2 张附件图（**不再要求同域**） |
+| `testAuthorityURLs_comeFromRealPCTemplate` | 收藏 / 关注的权威地址**真的写在站点 PC 模板里**，且与仓库里的常量一致 |
+| `testMySpaceKind_attentionIsTopicTypeNotUserList` | 关注是主题型；`hasExternalEntry == true` |
+
+---
+
+## 三、验证（用真实 PC 页面跑选择器镜像）
+
+夹具换成 PC 版（`Tests/Fixtures/*_pc.html`），用 cheerio（与 SwiftSoup 同为 CSS 选择器引擎）逐条镜像 Swift 里的选择器：
+
+```
+列表页  tbody[id^=normalthread_]        = 75 → 解析成功 75/75
+        标题/作者/日期/回复/**查看数**/分类/最后回复  全部取到，0 缺失
+        分页  当前页=1  next=forumdisplay.php?fid=14&page=2  末页="... 919"
+详情页  a[id^=postnum]                  = 50 楼（49 有正文 + 1 屏蔽楼）
+        作者/楼层号/时间/pid             缺失 0
+        标题  [心得技巧] + 正文标题       分类与标题正确拆分
+图片    div.postmessage 内 <img>        = 8
+        其中带 file 的附件图              = 2
+        过滤后保留                        = 6（4 张外链 + 2 张附件图）
+登录页  formhash / questionid / option   ✓（8 个安全提问）
+```
+
+> 关键验证结论：**附件图的真实地址只在 `file` 属性上**，`src` 是 `images/common/none.gif` 占位；
+> 且它位于 `div.postattachlist`（`td.t_msgfont` **之外**）—— 两处细节都踩过才会 0 张图。
+
+---
+
+## 四、其余解析器：为什么不用改
+
+排查后确认它们**本来就是模板无关**的（这也是本轮改动面小于预期的原因）：
+
+| 解析器 | 为何无需改 |
+|---|---|
+| `LoginFormParser` | 纯正则取 `input[name=formhash]` / `select[name=questionid]` |
+| `SearchResultParser` | 复用 `ThreadListParser`（已 PC 优先）+ 通用 `a[href*=viewthread.php]` 兜底 |
+| `ProfileParser` | 全文正则匹配「积分 / 帖子 / 用户组」标签 |
+| `PMListParser` / `PMConversationParser` | 按 `pm.php` / `space.php?uid=` 链接抽取 + 时间戳分块启发式 |
+| `MySpaceParser` | `my.php` 页内导航动态发现 + 通用锚点抽取 |
+| `DiscuzFormParser` | 正则解析任意 `<form>` 的 hidden / textarea / submit |
+
+⇒ **UI 层一行未改**（界面拿的是解析后的模型，与模板无关）。
+
+---
+
+## 五、遗留与待验证
+
+1. 🔸 **真机登录验证**：发帖附件的 `uid`/`hash` 是否真在 `form#imgattachform`、
+   SWFUpload 端点是否接受非图片的 `type=attach` —— 游客拿不到发帖页，**只能真机确认**。
+   失败时界面会明确报「附件上传失败（帖子未发出）」，不会假装成功。
+2. 🔸 **`my.php` / `pm.php` / `search.php` / `space.php`** 在 PC 模板下的真实结构仍无法本地抓取
+   （游客一律返回登录门）。这些解析器是**链接 / 正则 / 启发式**驱动的，理论上跨模板可用，
+   但需真机确认。
+3. 🔸 **老附件已被站方清理**：2004–2005 年的附件图服务器上已 404（如 tid=156304 三十张全失效），
+   任何方案都取不回，客户端如实不显示。
+4. 侧边抽屉 `#silder_l` 是 WAP 模板的结构；PC 模板下版块菜单走 `div#nav` 或整页扫描兜底，
+   实测 `div#nav` 命中。
+5. 🔸 **取消关注的地址未经真机验证**：站点只在 PC 模板里给出了「关注」的 `add` 地址，
+   没有给 `delete`。所以取消走「关注列表页自带的删除链接优先 + 候选兜底 + **回读关注列表确认**」；
+   确认不了会返回 `.unconfirmed` 并如实提示「未能确认取消成功」，不会假装成功。
+6. ✅ **本次可本地回归**：`Tests/D4D4YClientTests.swift` 新增 7 条 PC 夹具测试，
+   与截图验收同一次 CI 一起跑 —— 编译或解析回归会直接在 CI 里红，不必等看图。
+
+---
+
+## 六、教训
+
+**技术选型不得静默决定。** UA 决定模板，模板决定「用户看不看得见图」——
+这属于产品可见行为，不是内部实现细节，立项时就该讲明代价。
+本轮之前，这个选择被埋了 7 天，直到它以「图片看不到」的表象暴露出来。
+
+**有现成第三方实现时必须先找来读。** `webrules/4d4y` 一直在，用户也提过，
+它能一次回答「UA 怎么选 / 选择器是什么 / 上传协议是什么」——我却摸黑试错了十几轮。

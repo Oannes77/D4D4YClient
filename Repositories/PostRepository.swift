@@ -9,6 +9,8 @@ enum PostError: LocalizedError, Equatable {
     case parseFailure(String)
     case captchaRequired
     case submitFailed(String)
+    /// 附件上传（SWFUpload 第一步）失败 —— 此时**不会发出帖子**，如实报告原因。
+    case attachmentUploadFailed(String)
     case unknown(String)
 
     var errorDescription: String? {
@@ -19,6 +21,7 @@ enum PostError: LocalizedError, Equatable {
         case .parseFailure(let s): return "发帖表单解析失败：\(s)"
         case .captchaRequired: return "需要验证码：服务器要求图形验证码，暂不支持，请使用浏览器发帖。"
         case .submitFailed(let s): return "发帖提交失败：\(s)"
+        case .attachmentUploadFailed(let s): return "附件上传失败：\(s)（帖子未发出）"
         case .unknown(let s):  return "未知错误：\(s)"
         }
     }
@@ -31,12 +34,22 @@ struct PostedThread: Hashable {
 
 /// 待随帖上传的附件（图片或普通文件）。
 ///
-/// 附件走 `multipart/form-data` 与正文**一次性提交**：Discuz 的发帖页本身就是一个
-/// 可带文件的表单，因此不需要额外的两步上传流程。
+/// ⚠️ 站点用的是 Discuz 经典 **SWFUpload 两步协议**，**不是**「文件与正文塞进同一个请求」：
+/// 1. 先把文件 POST 到 `misc.php?action=swfupload&operation=upload&simple=1&type=…`，
+///    换回附件 ID（`aid`）；
+/// 2. 再用**普通 GBK 表单**发帖，正文尾部以 `[attachimg]aid[/attachimg]`（图片）
+///    或 `[attach]aid[/attach]`（其它文件）引用该 aid，
+///    并为每个 aid 带一条 `attachnew[<aid>][description]=`。
+///
+/// 该协议取自生产可用的参考实现（`github.com/webrules/4d4y`），
+/// 详见 `docs/RefProject.md` §4。
 struct PostAttachment {
     let fileName: String
     let mimeType: String
     let data: Data
+
+    /// 是否图片：决定 SWFUpload 的 `type=` 参数与正文里的 BBcode 标签。
+    var isImage: Bool { mimeType.lowercased().hasPrefix("image/") }
 }
 
 // MARK: - PostRepository
@@ -95,18 +108,42 @@ final class PostRepository {
             return .failure(.parseFailure("缺少 formhash（Discuz 防 CSRF 令牌）"))
         }
 
-        // 2) 拼装字段：全部 hidden + 标题 + 正文 + 提交按钮
+        // 2) 附件：**先上传换 aid**（SWFUpload 两步协议第一步）。
+        //    任何一个附件失败即整体中止 —— 不发出「正文与附件不符」的半个帖子。
+        var uploaded: [(aid: Int, isImage: Bool)] = []
+        if !attachments.isEmpty {
+            guard let keys = DiscuzFormParser.attachmentUploadKeys(in: html) else {
+                return .failure(.attachmentUploadFailed(
+                    "未能在发帖页解析到上传凭据（uid / hash）；可能该板块不允许附件，或页面结构不同"))
+            }
+            for file in attachments {
+                switch await uploadAttachment(file, keys: keys) {
+                case .success(let aid):  uploaded.append((aid, file.isImage))
+                case .failure(let error): return .failure(error)
+                }
+            }
+        }
+
+        // 3) 拼装字段：全部 hidden + 标题 + 正文（尾部追加附件引用）+ 提交按钮
         var fields = form.hiddenFields
         fields["subject"] = subject
-        fields[form.messageFieldName] = message
+
+        var body = message
+        if !uploaded.isEmpty {
+            let refs = uploaded.map { $0.isImage ? "[attachimg]\($0.aid)[/attachimg]"
+                                                 : "[attach]\($0.aid)[/attach]" }
+            body += "\n" + refs.joined(separator: "\n") + "\n"
+            for item in uploaded { fields["attachnew[\(item.aid)][description]"] = "" }
+        }
+        fields[form.messageFieldName] = body
+
         if let s = form.submitField {
             fields[s.name] = s.value
         } else {
             fields["topicsubmit"] = "true"     // 兜底：Discuz 7.2 发帖按钮名
         }
 
-        // 3) POST（带 Referer，模拟站内提交）
-        //    无附件 → GBK 表单编码；有附件 → multipart/form-data（字段同样 GBK 编码）。
+        // 4) POST：**一律 GBK 表单**。附件已在第一步单独上传，这里不再走 multipart。
         let baseRequest: HTTPRequest
         do {
             baseRequest = try client.request(path: form.action)
@@ -115,24 +152,9 @@ final class PostRepository {
         }
         var req = baseRequest
         req.method = .post
+        req.headers["Content-Type"] = "application/x-www-form-urlencoded"
         req.headers["Referer"] = HTTPClient.baseURL.appendingPathComponent("post.php").absoluteString
-
-        if attachments.isEmpty {
-            req.headers["Content-Type"] = "application/x-www-form-urlencoded"
-            req.body = DiscuzFormParser.gbkFormURLEncoded(fields)
-        } else {
-            let boundary = DiscuzFormParser.makeBoundary()
-            // 附件文件域字段名：优先用运行时解析到的；解析不到（Discuz 交给 JS 上传）时退回惯用名。
-            let fieldName = form.fileFieldNames.first ?? "attach[]"
-            let files = attachments.map {
-                DiscuzFormParser.MultipartFile(fieldName: fieldName,
-                                               fileName: $0.fileName,
-                                               mimeType: $0.mimeType,
-                                               data: $0.data)
-            }
-            req.headers["Content-Type"] = "multipart/form-data; boundary=\(boundary)"
-            req.body = DiscuzFormParser.multipartBody(boundary: boundary, fields: fields, files: files)
-        }
+        req.body = DiscuzFormParser.gbkFormURLEncoded(fields)
 
         do {
             let resp = try await client.sendText(req)
@@ -156,6 +178,56 @@ final class PostRepository {
         } catch {
             return .failure(.network(error.localizedDescription))
         }
+    }
+
+    // MARK: 3) 附件上传（SWFUpload 两步协议 · 第一步）
+    /// 把单个文件上传到 Discuz 的 SWFUpload 端点，换回附件 ID。
+    ///
+    /// - 端点：`misc.php?action=swfupload&operation=upload&simple=1&type=image|attach`
+    /// - 字段：`uid` / `hash`（取自发帖页 `form#imgattachform`）+ `Filedata`（**原始文件名**）
+    /// - 响应：纯文本 `DISCUZUPLOAD|0|<aid>`
+    ///
+    /// 任何异常都返回明确错误，**绝不伪造 aid**。
+    private func uploadAttachment(_ file: PostAttachment,
+                                  keys: (uid: String, hash: String)) async -> Result<Int, PostError> {
+        let boundary = DiscuzFormParser.makeBoundary()
+        let type = file.isImage ? "image" : "attach"
+        let path = "misc.php?action=swfupload&operation=upload&simple=1&type=\(type)"
+        do {
+            var req = try client.request(path: path)
+            req.method = .post
+            req.headers["Content-Type"] = "multipart/form-data; boundary=\(boundary)"
+            req.headers["Referer"] = HTTPClient.baseURL.appendingPathComponent("post.php").absoluteString
+            req.body = DiscuzFormParser.multipartBody(
+                boundary: boundary,
+                fields: ["uid": keys.uid, "hash": keys.hash],
+                files: [DiscuzFormParser.MultipartFile(fieldName: "Filedata",
+                                                       fileName: file.fileName,
+                                                       mimeType: file.mimeType,
+                                                       data: file.data)]
+            )
+            let resp = try await client.sendText(req)
+            if let aid = Self.uploadAid(in: resp) { return .success(aid) }
+            return .failure(.attachmentUploadFailed(
+                "\(file.fileName)：服务端未返回附件 ID（\(Self.brief(resp))）"))
+        } catch let e as NetworkError {
+            if case .cloudflareChallenge = e { return .failure(.pageUnavailable) }
+            return .failure(.network(e.localizedDescription))
+        } catch {
+            return .failure(.network(error.localizedDescription))
+        }
+    }
+
+    /// 解析 SWFUpload 响应：`DISCUZUPLOAD|0|<aid>` → `aid`。
+    ///
+    /// 首段不是 `DISCUZUPLOAD`、或状态位不是 `0`（表示上传失败）时返回 nil。
+    static func uploadAid(in response: String) -> Int? {
+        let trimmed = response.trimmingCharacters(in: .whitespacesAndNewlines)
+        let parts = trimmed.split(separator: "|", omittingEmptySubsequences: false)
+        guard parts.count >= 3,
+              parts[0].trimmingCharacters(in: .whitespaces) == "DISCUZUPLOAD",
+              parts[1].trimmingCharacters(in: .whitespaces) == "0" else { return nil }
+        return Int(parts[2].trimmingCharacters(in: .whitespaces))
     }
 
     /// 复查：重新拉取板块第一页，确认标题真实出现。

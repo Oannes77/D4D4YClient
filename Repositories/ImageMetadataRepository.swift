@@ -37,20 +37,15 @@ final class ImageMetadataRepository {
 
     /// 检测单个主题的媒体信息：请求 viewthread 第一页 → 解析正文图片 + 附件。
     ///
-    /// ⚠️ **这一次请求刻意使用桌面 UA（PC 模板）**，是全站唯一一处。
-    /// 原因：附件图（本论坛大量图片都是「以附件形式发布」）在 WAP 模板里**完全不渲染** ——
-    /// WAP 页尾确实有 `attachimgshow(pid)` 调用，但它要找的 `#aimg_<aid>` 元素并不存在，属空转；
-    /// 只有 PC 模板才输出
-    /// `<img src=".../images/common/none.gif" file="https://img02.4d4y.com/forum/attachments/…" id="aimg_<aid>">`，
-    /// 且该 `file` 地址游客可直接下载（实测 200 image/*，不需登录、不需 Referer）。
-    ///
-    /// 影响面仅限「列表首图 / 附件标记 / 首帖摘要」这三项元数据；
-    /// 正文、楼层、回复、发帖等全部仍走 WAP 模板，不随之改动。
+    /// 全局已统一为桌面 UA（PC 模板），因此这里与其它请求用同一套头，无需单独覆盖。
+    /// PC 模板下正文图片是可直接使用的真实 `<img src>`；附件图输出为
+    /// `<img src=".../images/common/none.gif" file="https://img02.4d4y.com/…/attachments/…"
+    ///   id="aimg_<aid>">`，**要取 `file` 属性**（实测游客可直接下载，200 image/*，
+    /// 不需登录、不需 Referer）。
     /// - Parameter tid: 主题 ID。
     func detect(tid: Int) async -> Result<ThreadMediaInfo, ImageMetadataError> {
         do {
-            let req = try client.request(path: "viewthread.php?tid=\(tid)",
-                                         headers: HTTPClient.desktopHeaders)
+            let req = try client.request(path: "viewthread.php?tid=\(tid)")
             let html = try await client.sendText(req)
             let urls = ThreadImageParser.parseContentImageURLs(from: html)
             let hasAttachment = ThreadImageParser.detectHasAttachment(from: html)

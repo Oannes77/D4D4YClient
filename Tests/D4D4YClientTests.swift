@@ -115,6 +115,98 @@ final class D4D4YClientTests: XCTestCase {
         XCTAssertNotNil(page.pageInfo.nextPageURL, "第 2 页应有下一页")
     }
 
+    // MARK: - Sprint 18：PC 模板（客户端全局改用桌面 UA 之后的唯一模板）
+
+    /// 列表页：PC 模板应有 75 条，且**有浏览量**（WAP 模板不输出这个字段）。
+    func testThreadListParser_pcTemplate() throws {
+        let html = decodedFixture("forumdisplay_fid14_page1_pc")
+        let page = try ThreadListParser.parse(html: html)
+        XCTAssertEqual(page.threads.count, 75, "PC 模板 fid=14 第 1 页应为 75 条主题")
+
+        let target = try XCTUnwrap(page.threads.first { $0.id == 193033 })
+        XCTAssertTrue(target.title.hasPrefix("Hi-pda"))
+        XCTAssertEqual(target.authorName, "EC")
+        XCTAssertEqual(target.authorID, 1142)
+        XCTAssertEqual(target.typeName, "心得技巧")
+        XCTAssertEqual(target.replies, 296)
+        XCTAssertEqual(target.views, 673371, "浏览量是 PC 模板才有的字段（WAP 模板没有）")
+
+        // 匿名主题的 authorID 仍必须是 nil，不能塌成 0。
+        XCTAssertTrue(page.threads.contains { $0.authorID == nil },
+                      "应存在至少一条匿名主题（authorID == nil）")
+    }
+
+    /// 分页：PC 模板每页 50 楼，页码链接带 `&sid=`，**必须剥掉**（我们始终带 Cookie）。
+    func testPaginationParser_pcTemplate_listPage1() throws {
+        let doc = try SwiftSoup.parse(decodedFixture("forumdisplay_fid14_page1_pc"))
+        let info = try XCTUnwrap(PaginationParser.parse(document: doc))
+        XCTAssertEqual(info.currentPage, 1)
+        XCTAssertEqual(info.totalPages, 919)
+        XCTAssertNil(info.previousPageURL, "第 1 页无上一页")
+        XCTAssertEqual(info.nextPageURL, "forumdisplay.php?fid=14&page=2",
+                       "PC 链接里的 &sid=… 应被剥掉")
+    }
+
+    /// 详情页：PC 模板同样 50 楼（含 1 个屏蔽楼），标题按 `[分类] 标题` 拆分。
+    func testThreadDetailParser_pcTemplate() throws {
+        let html = decodedFixture("viewthread_tid193033_page1_pc")
+        let page = try ThreadDetailParser.parse(html: html)
+
+        XCTAssertEqual(page.posts.count, 50, "1 楼 + 49 回复 = 50")
+        let first = try XCTUnwrap(page.posts.first)
+        XCTAssertEqual(first.floor, 1)
+        XCTAssertEqual(first.authorName, "EC")
+        XCTAssertEqual(first.authorID, 1142)
+        XCTAssertEqual(first.id, 1863080)
+        XCTAssertTrue(page.title.hasPrefix("Hi-pda"), "标题应已去掉 [分类] 前缀")
+        XCTAssertEqual(page.typeName, "心得技巧", "方括号里的分类应被提取")
+
+        XCTAssertEqual(page.posts.filter { $0.isBlocked }.count, 1, "应恰好 1 个被屏蔽楼层")
+    }
+
+    /// 首帖图片：PC 模板的**附件图真实地址在 `file` 属性上**（`src` 是占位图），
+    /// 且位于 `td.t_msgfont` 之外的 `div.postattachlist` —— 两处都踩过才会 0 张图。
+    func testThreadDetailParser_pcTemplate_attachmentImageAppended() throws {
+        let html = decodedFixture("viewthread_tid332225_page1_pc")
+        let page = try ThreadDetailParser.parse(html: html)
+        let first = try XCTUnwrap(page.posts.first)
+        XCTAssertTrue(first.htmlContent.contains("attachments/day_061102"),
+                      "附件图的真实地址（file 属性）应被追加到楼层正文里")
+    }
+
+    /// 首图解析（PC 模板，附件型主题）：过滤后应保留全部内容图（外链图床 + 附件图）。
+    func testThreadImageParser_pcTemplate_keepsExternalAndAttachmentImages() throws {
+        let html = decodedFixture("viewthread_tid332225_page1_pc")
+        let urls = ThreadImageParser.parseContentImageURLs(from: html)
+        XCTAssertEqual(urls.count, 6, "4 张外链图床 + 2 张附件图")
+        XCTAssertTrue(urls.contains { $0.absoluteString.contains("day_061102") },
+                      "附件图应被识别为内容图")
+        XCTAssertTrue(urls.contains { $0.host?.contains("eawan.com") ?? false },
+                      "老帖的外链图床不要求同域，否则会被误过滤")
+    }
+
+    /// 权威接口地址必须**真的写在站点 PC 模板里** —— 这两个字符串是收藏与关注的唯一依据，
+    /// 写错了会让「收藏 / 关注」全部落空，所以用真实夹具把它们钉住。
+    func testAuthorityURLs_comeFromRealPCTemplate() throws {
+        let html = decodedFixture("viewthread_tid193033_page1_pc")
+        XCTAssertTrue(html.contains("my.php?item=favorites&tid=193033"),
+                      "收藏地址来自站点 favoritewin 弹层原文")
+        XCTAssertTrue(html.contains("my.php?item=attention&action=add&tid=193033"),
+                      "关注地址来自站点 favoritewin 弹层原文（[关注此主题的新回复]）")
+
+        XCTAssertEqual(FavoriteRepository.listPath, "my.php?item=favorites&type=thread")
+        XCTAssertEqual(AttentionRepository.listPath, "my.php?item=attention")
+    }
+
+    /// 「关注」是**主题型**栏目（参数 tid），不是用户型 —— 归错类别会让列表一条都认不出。
+    func testMySpaceKind_attentionIsTopicTypeNotUserList() {
+        XCTAssertFalse(MySpaceKind.follows.isUserList, "关注的是主题，不是人")
+        XCTAssertTrue(MySpaceKind.friends.isUserList, "只有好友是用户型列表")
+        XCTAssertEqual(MySpaceKind.follows.fallbackItem, "attention")
+        XCTAssertTrue(MySpaceKind.follows.hasExternalEntry,
+                      "关注的入口只在帖子页 favoritewin 里，不能因 my.php 导航缺项就判「本站没有」")
+    }
+
     /// P1-3：当真实 pid 缺失时，fallback id 必须非零、稳定、唯一（不塌成 0）。
     func testPostID_fallbackStableAndNonZero() throws {
         let html = """

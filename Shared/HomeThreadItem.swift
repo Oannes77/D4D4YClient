@@ -20,7 +20,7 @@ struct HomeThreadItem: Identifiable, Hashable {
     let shares: Int?             // 站内转发（论坛原生转发给用户名）
     let favorites: Int?          // 收藏数（论坛原生收藏）
     let points: Int?             // 积分（替代「赞」的语义位置）
-    let views: Int?              // 浏览量（当前 wap 模板不输出，恒为 nil）
+    let views: Int?              // 浏览量（PC 模板的 td.nums > em 会输出；WAP 模板没有）
     let hasImage: Bool
     let imageURL: URL?           // 第一张正文图（列表只显一张）
     let hasAttachment: Bool

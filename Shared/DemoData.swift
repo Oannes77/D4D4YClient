@@ -111,6 +111,17 @@ enum DemoData {
         }
     }
 
+    /// 演示用「我关注的主题」列表（离线样例，仅 Demo / 截图模式使用）。
+    ///
+    /// ⚠️ 「关注」是**主题型**：Discuz 的 `my.php?item=attention` 关注的是**帖子**（参数 tid），
+    /// 不是人。所以这里列出来的都是主题，与 `mySpaceDemo(kind: .follows)` 同源，
+    /// 正式运行时一律来自论坛服务器。
+    static func attentionDemo() -> [AttentionItem] {
+        savedThreadSamples.map {
+            AttentionItem(tid: $0.tid, title: $0.title, detail: "\($0.board) · 有新回复")
+        }
+    }
+
     /// 为帖子列表行注入 📷 / 📎 媒体标识（跳过网络检测，直接按 tid 标记）。
     @MainActor
     static func seedMedia(for threads: [ForumThread], context: ModelContext) {
@@ -281,8 +292,11 @@ enum DemoData {
 
     /// 「我的」宫格四栏的离线样例（仅截图用；真实模式走 `my.php`）。
     ///
-    /// 「关注」刻意返回 `.sectionMissing`：4D4Y 用的是 Discuz! 7.2，它的「我的中心」
-    /// 没有「关注」栏目。演示数据**不假装有**，与真实模式的判断保持同一口径。
+    /// ⚠️ 2026-09-24 更正：此前这里让「关注」返回 `.sectionMissing`，理由是「Discuz! 7.2 的
+    /// 我的中心没有关注栏目」—— **那个判断是错的**。站点 PC 模板的 `favoritewin` 弹层里
+    /// 写着 `my.php?item=attention&action=add&tid=<tid>`（[关注此主题的新回复]），
+    /// 关注确实存在，且关注的是**主题**（参数是 tid，不是 uid）。
+    /// 所以演示数据现在如实给出「我关注的主题」，与真实模式口径一致。
     static func mySpaceDemo(kind: MySpaceKind) -> Result<[MySpaceEntry], MySpaceError> {
         switch kind {
         case .threads:
@@ -326,8 +340,15 @@ enum DemoData {
                              timeRaw: "", threadID: nil, userID: 888, userName: "Discovery控")
             ])
         case .follows:
-            // 本站没有这个栏目：演示数据与真实判断一致，不凭空造一份列表。
-            return .failure(.sectionMissing(kind.title))
+            // 「关注」是**主题型**（`my.php?item=attention` 关注的是帖子不是人），
+            // 所以这一栏列出的是「我关注的主题」，与 `attentionDemo()` 同一份样例。
+            return .success(attentionDemo().map {
+                MySpaceEntry(id: "thread:\($0.tid)",
+                             title: $0.title,
+                             detail: $0.detail,
+                             timeRaw: "",
+                             threadID: $0.tid, userID: nil, userName: nil)
+            })
         }
     }
 }

@@ -12,11 +12,11 @@ struct PostRow: View {
     var onOpen: () -> Void
     var onReply: () -> Void
     var onUser: (Int, String) -> Void
-    /// 是否已在本机收藏（决定星标空心 / 实心）。
+    /// 是否已收藏（论坛服务器，决定星标空心 / 实心）。
     var isSaved: Bool = false
     /// 帖子网页地址（系统分享用）；拿不到时隐藏分享按钮，不摆设空按钮。
     var threadURL: URL? = nil
-    /// 点星标：切换本地收藏（与详情页同一份数据）。
+    /// 点星标：切换**服务器**收藏（与详情页同一份数据，结果以回读列表为准）。
     var onToggleSave: () -> Void = {}
 
     @Environment(\.colorScheme) private var scheme
@@ -117,7 +117,7 @@ struct PostRow: View {
             }
 
             // 操作栏（全图标 + 必要数字）。
-            // 分享 / 收藏 都是真做的事：分享走系统分享面板，收藏写本地书签（与详情页同源）。
+            // 分享 / 收藏 都是真做的事：分享走系统分享面板，收藏写**论坛服务器**收藏（与详情页同源）。
             HStack(spacing: 22) {
                 Button { onReply() } label: {
                     Image(systemName: "bubble.right")

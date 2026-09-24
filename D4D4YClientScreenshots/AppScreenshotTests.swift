@@ -53,7 +53,7 @@ final class AppScreenshotTests: XCTestCase {
         // ① 首页：被拉黑作者的主题显示「-已拉黑-」占位
         //    （Demo 流把被拉黑的作者放在第 2 条，确保占位落在首屏内 —— 第 1 条带大图很高）
         Target(screen: "home",         waitElement: "home-post-open", settle: 1.2),
-        // ② 详情页操作栏：分享改为菜单（系统分享 / 分享给好友）+ 新增「举报」
+        // ② 详情页操作栏：分享改为菜单（系统分享 / 分享给好友）+ 「举报」+ 新增「关注主题」铃铛
         //    首帖正文很长，操作栏在首屏之外 —— 先滚进可视区，否则只能拍到正文，验收点根本看不到。
         Target(screen: "thread",       waitElement: "detail-reply",   settle: 0.6,
                scrollToElement: "post-share"),
@@ -72,6 +72,9 @@ final class AppScreenshotTests: XCTestCase {
         // ⑦ 举报私信：收件人 = 管理员 4D4Y（UID 29），输入框预填帖子链接草稿
         // 锚点必须与导航标题（`userName`）大小写一致，否则 XCUI 精确匹配不上、白白多等 12s。
         Target(screen: "reportChat",   waitElement: "4D4Y",          settle: 1.2),
+        // ⑧ 我的 → 关注：口径已更正（`attention` 关注的是**主题**，参数 tid），
+        //    这里必须看到真实的主题列表，而不是此前那句「本站没有这个栏目」。
+        Target(screen: "myFollows",    waitElement: "my-space-row",  settle: 1.2),
     ]
 
     /// 已验收通过的界面（默认不跑）。需要全量回归时，把这组拼到 `targets` 后面即可。

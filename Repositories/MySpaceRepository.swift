@@ -7,7 +7,8 @@ import Foundation
 enum MySpaceError: LocalizedError, Equatable {
     /// 命中登录门：该页面必须登录才可读。
     case requiresLogin
-    /// 导航解析成功、但本站的我的中心里**没有**这个栏目（如 Discuz! 7.2 无「关注」）。
+    /// 导航解析成功、但本站的我的中心里**没有**这个栏目。
+    /// （注意：这不是「关注」—— 关注是真实存在的，见 `MySpaceKind.isUserList` 的说明。）
     case sectionMissing(String)
     /// 页面拿到了但结构未识别（模板改版），明确告知而不是显示空列表。
     case unsupported
@@ -59,7 +60,10 @@ final class MySpaceRepository: MySpaceRepositoryProtocol {
         let menu = MySpaceParser.menuItems(html: rootHTML)
         let resolved = kind.resolveItem(in: menu)
         // 导航被成功解析出来、但确实没有本栏目 → 本站不支持，如实说明。
-        if resolved == nil, !menu.isEmpty {
+        // ⚠️ 例外见 `hasExternalEntry`：站点可能把入口放在别的页面（「关注」就只出现在
+        // 帖子页的 `favoritewin` 弹层里），此时不能凭「我的中心」导航缺项就下结论，
+        // 仍按已知地址试一次，让真实页面结构说话。
+        if resolved == nil, !menu.isEmpty, !kind.hasExternalEntry {
             return .failure(.sectionMissing(kind.title))
         }
 

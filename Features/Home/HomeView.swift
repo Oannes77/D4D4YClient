@@ -15,8 +15,7 @@ struct HomeView: View {
     @Environment(\.colorScheme) private var scheme
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \PinnedForum.sortOrder) private var pinned: [PinnedForum]
-    /// 本地收藏（书签）：列表行星标状态与详情页共用同一份数据。
-    /// 收藏状态（论坛服务器真源 `my.php?item=favorites`，登录后可用）。
+    /// 收藏状态（论坛服务器真源 `my.php?item=favorites`，登录后可用）：列表行星标与详情页共用同一份数据。
     @ObservedObject private var favorites = FavoritesStore.shared
     /// 本地已拉黑作者（纯客户端行为，与论坛侧处罚无关）。
     @Query private var blockedUsers: [BlockedUser]

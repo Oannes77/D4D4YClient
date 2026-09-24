@@ -1,26 +1,28 @@
 import Foundation
 import SwiftSoup
 
-/// 解析 forumdisplay.php 主题列表。
+/// 解析 forumdisplay.php 主题列表（**两套模板都认**）。
 ///
-/// 真实 DOM（Discuz! 7.2 + 定制 wap 模板，已用 fid=14 第 1/2 页验证）：
+/// **PC 模板**（全局默认；已用 `fid=14` 真实页面验证，75 行全部命中）：
 /// ```
-/// <tr>
-///   <td class="list_user"><a href="space.php?uid=182853" class="user"><img .../></a></td>
-///   <td class="listcon">
-///     <p><a href="space.php?uid=182853">rrambo</a> / 2005-8-27</p>
-///     <em>[<a href="forumdisplay.php?fid=14&filter=type&typeid=10">心得技巧</a>]</em>
-///     <a href="viewthread.php?tid=269563&extra=page%3D1" class="title">标题</a>
-///     <p><a href="space.php?username=ximeng1018">ximeng1018</a>
-///        / <a href="redirect.php?tid=...&goto=lastpost#lastpost">2012-12-27 21:38</a></p>
-///   </td>
-///   <td width="70" align="right"><a href="#" class="num">296</a></td>
-/// </tr>
+/// <tbody id="normalthread_269563">
+///   <tr>
+///     <td class="folder">…</td><td class="icon">…</td>
+///     <th class="subject common">
+///       <em>[<a href="forumdisplay.php?fid=14&filter=type&typeid=10">心得技巧</a>]</em>
+///       <span id="thread_269563"><a href="viewthread.php?tid=269563&…">标题</a></span>
+///       <img src="…/images/attachicons/common.gif" alt="附件" class="attach" />
+///     </th>
+///     <td class="author"><cite><a href="space.php?uid=182853">rrambo</a></cite><em>2005-8-27</em></td>
+///     <td class="nums"><strong>1022</strong>/<em>607982</em></td>   ← 回复数 / 查看数
+///     <td class="lastpost"><cite><a href="space.php?username=tzdrl">tzdrl</a></cite>
+///         <em><a href="redirect.php?tid=…&goto=lastpost#lastpost">2026-9-17 16:22</a></em></td>
+///   </tr>
+/// </tbody>
 /// ```
-/// 注意：
-/// - 该模板只有一个数字列（回复数），**没有查看数**。
-/// - 匿名帖作者 <p> 内无 <a> 链接。
-/// - 置顶/普通帖行结构完全相同，无法从行内稳定区分。
+/// **WAP 模板**（兜底）：`tr:has(td.listcon)` + `a.title`，见 `parseWAPRow`。
+///
+/// 两套的差异：**PC 模板有查看数**（`td.nums > em`），WAP 模板完全不输出，故 WAP 下 `views` 恒为 nil。
 struct ThreadListParser {
 
     /// 行级解析诊断信息，供 Debug 区分“Selector 未匹配 / 字段缺失”。
@@ -45,45 +47,131 @@ struct ThreadListParser {
 
     static func parse(html: String) throws -> ThreadListPage {
         let document = try SwiftSoup.parse(html)
-
-        // 版块名来自面包屑导航最后一节
         let forumName = extractForumName(from: document)
 
-        let rows = try document.select("tr:has(td.listcon)")
-        guard !rows.isEmpty() else {
-            Log.parser.fault("Selector 未匹配任何主题行 (tr:has(td.listcon))")
-            throw ListParseError.emptyThreadList
+        if let page = parsePC(document: document, forumName: forumName) {
+            return page
+        }
+        Log.parser.warning("PC 模板未命中主题行，回退 WAP 模板解析")
+        return try parseWAP(document: document, forumName: forumName)
+    }
+
+    // MARK: - PC 模板
+
+    private static func parsePC(document: Document, forumName: String?) -> ThreadListPage? {
+        guard let rows = try? document.select("tbody[id^=normalthread_]"), rows.size() > 0 else {
+            return nil
         }
 
         var threads: [ForumThread] = []
         var diagnostics = Diagnostics()
         diagnostics.rowCount = rows.size()
-
         for row in rows {
-            // 单行解析完全容错：任何字段缺失只记诊断，不中断整页。
-            if let thread = parseRow(row, diagnostics: &diagnostics) {
+            if let thread = parsePCRow(row, diagnostics: &diagnostics) {
                 threads.append(thread)
                 diagnostics.parsedRowCount += 1
             }
         }
-        Log.parser.info("ThreadListParser \(diagnostics.summary, privacy: .public)")
+        guard !threads.isEmpty else { return nil }
+        Log.parser.info("ThreadListParser(PC) \(diagnostics.summary, privacy: .public)")
 
         let pageInfo = PaginationParser.parse(document: document)
             ?? PageInfo(currentPage: 1, totalPages: 1, previousPageURL: nil, nextPageURL: nil)
         return ThreadListPage(forumName: forumName, threads: threads, pageInfo: pageInfo)
     }
 
-    private static func extractForumName(from document: Document) -> String? {
-        // <div class="w navbar">... » <a href="forumdisplay.php?fid=14">版块名</a> » 标题
-        guard let navbar = try? document.select("div.navbar").first(),
-              let links = try? navbar.select("a[href*='forumdisplay.php']") else { return nil }
-        guard links.size() > 0 else { return nil }
-        return try? links.get(links.size() - 1).text()
+    private static func parsePCRow(_ row: Element, diagnostics: inout Diagnostics) -> ForumThread? {
+        // 标题链接：PC 模板把标题包在 span#thread_<tid> 里；`a.xst` 是 Discuz 原生类名，作为兜底。
+        var titleLink: Element? = (try? row.select("th.subject span[id^=thread_] > a").first()) ?? nil
+        if titleLink == nil { titleLink = (try? row.select("a.xst").first()) ?? nil }
+
+        let rowID = (try? row.attr("id")) ?? ""
+        guard let titleLink,
+              let title = try? titleLink.text(), !title.isEmpty,
+              let href = try? titleLink.attr("href"),
+              let tid = extractTID(fromRowID: rowID) ?? extractTID(from: href) else {
+            Log.parser.warning("PC 列表行缺少标题或 tid，跳过该行")
+            return nil
+        }
+
+        // 分类前缀 [心得技巧]
+        let typeName = (try? row.select("th.subject em a").first()?.text()) ?? nil
+
+        var authorName = "匿名"
+        var authorID: Int?
+        if let authorLink = (try? row.select("td.author cite > a").first()) ?? nil {
+            authorName = (try? authorLink.text()) ?? authorName
+            authorID = extractUID(from: (try? authorLink.attr("href")) ?? "")
+            if authorID == nil { diagnostics.missingAuthorUID += 1 }
+        } else {
+            diagnostics.missingAuthor += 1
+        }
+
+        let createdAtRaw = (((try? row.select("td.author em").first()?.text()) ?? nil) ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if createdAtRaw.isEmpty { diagnostics.missingDate += 1 }
+
+        // 回复 / 查看：PC 模板 <td class="nums"><strong>回复</strong>/<em>查看</em></td>
+        var replies: Int?
+        var views: Int?
+        if let s = ((try? row.select("td.nums strong").first()?.text()) ?? nil),
+           let n = Int(s.trimmingCharacters(in: .whitespaces)) { replies = n }
+        if let s = ((try? row.select("td.nums em").first()?.text()) ?? nil),
+           let n = Int(s.trimmingCharacters(in: .whitespaces)) { views = n }
+        if replies == nil {
+            // 兜底：整格文本形如 "1022/607982"
+            let cell = (((try? row.select("td.nums").first()?.text()) ?? "") )
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let parts = cell.split(separator: "/").map { $0.trimmingCharacters(in: .whitespaces) }
+            if parts.count >= 1 { replies = Int(parts[0]) }
+            if parts.count >= 2, views == nil { views = Int(parts[1]) }
+        }
+        if replies == nil { diagnostics.missingReplies += 1 }
+
+        let lastReplyUserName = (try? row.select("td.lastpost cite > a").first()?.text()) ?? nil
+        let lastReplyAtRaw = (try? row.select("td.lastpost em > a").first()?.text()) ?? nil
+
+        return ForumThread(
+            id: tid,
+            title: title,
+            typeName: typeName,
+            authorName: authorName,
+            authorID: authorID,
+            createdAt: DiscuzDateParser.parse(createdAtRaw),
+            createdAtRaw: createdAtRaw,
+            replies: replies,
+            views: views,
+            lastReplyUserName: lastReplyUserName,
+            lastReplyAtRaw: lastReplyAtRaw
+        )
     }
 
-    // MARK: - 单行解析
+    // MARK: - WAP 模板（兜底）
 
-    private static func parseRow(_ row: Element, diagnostics: inout Diagnostics) -> ForumThread? {
+    private static func parseWAP(document: Document, forumName: String?) throws -> ThreadListPage {
+        let rows = try document.select("tr:has(td.listcon)")
+        guard !rows.isEmpty() else {
+            Log.parser.fault("Selector 未匹配任何主题行（PC 与 WAP 都不命中）")
+            throw ListParseError.emptyThreadList
+        }
+
+        var threads: [ForumThread] = []
+        var diagnostics = Diagnostics()
+        diagnostics.rowCount = rows.size()
+        for row in rows {
+            if let thread = parseWAPRow(row, diagnostics: &diagnostics) {
+                threads.append(thread)
+                diagnostics.parsedRowCount += 1
+            }
+        }
+        Log.parser.info("ThreadListParser(WAP) \(diagnostics.summary, privacy: .public)")
+
+        let pageInfo = PaginationParser.parse(document: document)
+            ?? PageInfo(currentPage: 1, totalPages: 1, previousPageURL: nil, nextPageURL: nil)
+        return ThreadListPage(forumName: forumName, threads: threads, pageInfo: pageInfo)
+    }
+
+    private static func parseWAPRow(_ row: Element, diagnostics: inout Diagnostics) -> ForumThread? {
         guard let titleLink = try? row.select("a.title").first(),
               let title = try? titleLink.text(),
               !title.isEmpty,
@@ -93,9 +181,7 @@ struct ThreadListParser {
             return nil
         }
 
-        // 分类前缀 [心得技巧]
         let typeName = (try? row.select("em a").first()?.text()) ?? nil
-        // td.listcon 内两个 <p>：作者+发帖日期、最后回复者+最后回复时间
         let paragraphs = (try? row.select("td.listcon > p")) ?? Elements()
 
         var authorName = "匿名"
@@ -145,10 +231,34 @@ struct ThreadListParser {
             createdAt: DiscuzDateParser.parse(createdAtRaw),
             createdAtRaw: createdAtRaw,
             replies: replies,
-            views: nil,                      // wap 模板不输出查看数
+            views: nil,                      // WAP 模板不输出查看数
             lastReplyUserName: lastReplyUserName,
             lastReplyAtRaw: lastReplyAtRaw
         )
+    }
+
+    // MARK: - 工具
+
+    /// 面包屑里的版块名。PC 模板用 `div#nav`/`h1`，WAP 用 `div.navbar`，这里逐个试。
+    private static func extractForumName(from document: Document) -> String? {
+        let candidates = ["div.navbar", "div#nav", "div.nav", "h1"]
+        for selector in candidates {
+            guard let container = try? document.select(selector).first(),
+                  let links = try? container.select("a[href*=forumdisplay.php]"),
+                  links.size() > 0 else { continue }
+            // 面包屑最后一节通常就是当前版块；排除“返回列表”之类。
+            for i in stride(from: links.size() - 1, through: 0, by: -1) {
+                let text = ((try? links.get(i).text()) ?? "").trimmingCharacters(in: .whitespaces)
+                if !text.isEmpty { return text }
+            }
+        }
+        return nil
+    }
+
+    /// `normalthread_269563` -> 269563
+    private static func extractTID(fromRowID id: String) -> Int? {
+        guard let range = id.range(of: #"normalthread_(\d+)"#, options: .regularExpression) else { return nil }
+        return Int(id[range].split(separator: "_").last.map(String.init) ?? "")
     }
 
     private static func extractTID(from href: String) -> Int? {

@@ -23,7 +23,7 @@ enum ScreenshotScreen: String, CaseIterable {
     case blockedUsers        // 黑名单（本地屏蔽）
     case myThreads           // 我的中心：我的帖子（my.php）
     case myFriends           // 我的中心：好友（my.php）
-    case myFollows           // 我的中心：关注（本站无此栏目 → 如实说明）
+    case myFollows           // 我的中心：关注（我关注的主题，my.php?item=attention）
     case replyPlaceholder    // 回帖占位符设置（可编辑 + 效果预览）
     case pushSettings        // 消息推送（后台刷新间隔）
     case settings            // 设置

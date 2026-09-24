@@ -1,7 +1,13 @@
 # 4D4Y 站点实测事实（模板分发 / 接口 / 可达性）
 
-> 更新于 2026-09-20。本文只写**实测过**的事实，每条都能用文末的命令复现。
+> 更新于 **2026-09-24（Sprint 18 之后）**。本文只写**实测过**的事实，每条都能用文末的命令复现。
 > 目的：避免再出现「同一件事两轮得出相反结论」——2026-09-20 查明，根因是**站点按 UA 分发两套模板**。
+>
+> 🟢 **2026-09-24 现状**：客户端**已全局改用桌面 UA**（`Network/HTTPClient.swift`），
+> 所以 App 现在解析的是 **PC 模板**，图片 / 附件 / 浏览量 / 上传表单全部可用。
+> 本文中「WAP 模板」相关段落仍保留 —— 它们是**历史夹具与诊断脚本的口径**，
+> 也是解释「为什么早期结论互相矛盾」的关键证据，不要删。
+> 变更细节见 `docs/Sprint18-Changelog.md`；权威参照见 `docs/RefProject.md`。
 
 ---
 
@@ -11,14 +17,18 @@
 
 | 请求 UA | 拿到的模板 | 说明 |
 |---|---|---|
-| 移动 UA（iPhone Safari 等） | `templates/wap/` | **精简版**，客户端走的就是这套 |
-| 其它（桌面 UA、`CFNetwork` 裸 UA、curl/node 默认） | `templates/default/` | **完整 PC 模板**，功能入口齐全 |
+| 移动 UA（iPhone Safari 等） | `templates/wap/` | **精简版**：正文极少配图、附件图完全不渲染、无浏览量、发帖页无上传域 |
+| 桌面 UA（Chrome/Edge/Safari 桌面） | `templates/default/` | **完整 PC 模板**，图片 / 附件 / 上传 / 浏览量齐全 |
 
-⚠️ **客户端 `HTTPClient.defaultHeaders` 里写的就是移动 Safari UA**（`Network/HTTPClient.swift`），
-所以 App 全程解析的是 **WAP 模板**；`Tests/Fixtures/` 与 `Demo/DemoFixtures/` 里保存的夹具
-（`forumdisplay_fid14_page1.html`、`viewthread_tid193033_page1.html`）同样是 WAP 模板（含 `templates/wap/` 引用）。
+🔴 **客户端当前用的是桌面 UA**（Sprint 18 起，`Network/HTTPClient.swift` 的 `defaultHeaders`），
+与参考实现 `webrules/4d4y` 一致 —— 所以 App 现在走 PC 模板。
 
-⇒ **改 UA 等于换掉所有页面结构**，会连带影响全部解析器与夹具，不能单独改。
+⚠️ 但 `Tests/Fixtures/` 里同时留着两套夹具，且**工具脚本 `analysis/probe.mjs` 刻意用移动 UA**：
+- `*_pc.html` = PC 模板（当前线上口径，Sprint 18 抓取）
+- `forumdisplay_fid14_page1.html` / `viewthread_tid193033_page1.html` = WAP 模板（历史口径）
+
+⇒ **改 UA 等于换掉所有页面结构**，会连带影响全部解析器与夹具。因此 Sprint 18 的做法是
+「解析器 PC 优先 + WAP 兜底」双轨，两边都不能拆。
 
 ### 实测：同一帖两套模板的差异（`viewthread.php?tid=193033`）
 
@@ -87,13 +97,24 @@ if(!obj.status) { obj.status = 1; obj.src = obj.getAttribute('file'); }
 - 形态不正确的 `?mobile=no` 直接 404
 ⇒ 模板切换**只有 UA 一个开关**，且**只应逐请求使用**（见下）。
 
-### 取用方式（已落地）
+### 取用方式（Sprint 18 起：**全局**桌面 UA）
 
-**不要改全局 UA** —— 全部解析器与 `Tests/Fixtures` 都建立在 WAP 模板之上。
-正确做法是**逐请求覆盖**：`HTTPClient.request(path:headers:)` 传入 `HTTPClient.desktopHeaders`。
-目前全站只有一处这么用：`ImageMetadataRepository.detect`（只为拿附件图地址）。
-连带必修：`ThreadImageParser.parsePreviewText` 必须同时认 PC 容器
-（`td.t_msgfont` / `[id^=postmessage_]`），否则元数据改走 PC 后首页首帖摘要会变空。
+**改前**：全局移动 UA，只让 `ImageMetadataRepository.detect` 逐请求覆盖桌面头。
+**改后**：`HTTPClient.defaultHeaders` 直接就是桌面 Chrome/Edge UA + `Referer` +
+`Accept-Language` + `Upgrade-Insecure-Requests` + `Cache-Control`，全站只有一套头。
+随之而来的连带调整（都已落地）：
+
+| 连带项 | 为什么必须一起改 |
+|---|---|
+| `ThreadListParser` / `ThreadDetailParser` / `PaginationParser` / `ForumMenuParser` | PC 结构完全不同，改为 **PC 优先 + WAP 兜底** |
+| `ThreadImageParser.firstPostSection` | 扫描范围要认 `div.postmessage`（附件图在 `td.t_msgfont` **之外**） |
+| `ThreadImageParser.isContentImage` | **不再要求同域**（老帖图多在外链图床，如 `pic.eawan.com`） |
+| `PaginationParser.strippingSessionID` | PC 链接带 `&sid=…`，我们始终带 Cookie，必须剥掉 |
+| `PostRepository` 附件上传 | PC 发帖页有 `form#imgattachform`，上传走 **SWFUpload 两步协议** |
+| `DiscuzFormParser.attachmentUploadKeys` | 运行时解析该表单的 `uid` / `hash` |
+
+⚠️ 历史夹具与 `analysis/probe.mjs` 仍是 WAP 口径：**夹具要两套都留**，
+新抓页面一律用桌面 UA（`analysis/pcfetch.mjs`）。
 
 ---
 
@@ -141,8 +162,9 @@ WAP 模板的帖子页（客户端实际拿到的那份）原文：
 
 🟢 **这解释了历史结论冲突**：Sprint 12 观察到「入口被模板整块注释」是**对的**（那一套就是 WAP 模板，注释里还有一句提示），
 Sprint 16 由用户给出链接后判「功能是真实存在的」也是**对的**（PC 模板里入口是活的、接口真实）。
-**两个结论并不矛盾，只是看的不是同一套模板。** 项目里「入口被注释 ≠ 功能不存在」这条经验依然成立：
-本客户端因为拿不到 PC 模板，只能改为**直接用已知接口 + 回读确认**，而不是依赖页面里的入口。
+**两个结论并不矛盾，只是看的不是同一套模板。** 项目里「入口被注释 ≠ 功能不存在」这条经验依然成立。
+Sprint 18 起客户端虽然已经拿到 PC 模板，**但仍然直接用已知接口 + 回读确认**，
+不依赖页面里的入口 —— 入口是给人点的，接口才是给程序调的，后者更稳。
 
 ---
 
@@ -157,7 +179,8 @@ Sprint 16 由用户给出链接后判「功能是真实存在的」也是**对�
 | `post.php` / `pm.php` / `my.php` / `space.php` / `search.php` | 🚫 登录门（HTTP 200，正文是「对不起，您还未登录，无法进行此操作。」+ 登录表单） |
 
 **登录门的安全性**：`HTTPClient.sendText` 统一检测正文里的「您还未登录」→ 发出掉线通知。
-WAP 登录门的文案就是「对不起，**您还未登录**，无法进行此操作。」，能被这条规则命中。
+WAP 登录门的文案就是「对不起，**您还未登录**，无法进行此操作。」，能被这条规则命中；
+PC 模板的登录门文案同样含「您还未登录」（Sprint 18 复核），所以切换模板不影响这条检测。
 （另注：登录门页面自己带一个 `logging.php?action=login` 的 `<form>` 和 `formhash`，
 所以**任何「解析页面表单再提交」的流程都必须先确认不是登录门**，否则会把正文提交到登录脚本上。）
 
@@ -170,10 +193,13 @@ node analysis/uatest.mjs        # 对比 mobile / desktop / 裸 UA 各拿到哪�
 node analysis/tpldiff.mjs "viewthread.php?tid=193033"   # 两套模板的关键词计数差
 node analysis/probe.mjs "pm.php?action=view&uid=29"     # 游客可达性（结果会存到 _probe/）
 node analysis/decode.mjs _probe/pm_wap.html             # GBK 页面解码 + 打印表单原文
+node analysis/pcfetch.mjs "viewthread.php?tid=332225"   # 用**桌面 UA** 抓页面存成 *_pc.html 夹具
+node analysis/verifypc.mjs                              # 用 cheerio 镜像 Swift 选择器，逐条校验 PC 夹具
 ```
 
-⚠️ `analysis/probe.mjs` 刻意使用**与 App 相同的移动 UA**，所以它看到的结构就是 App 看到的结构
-（既有诊断脚本、`docs/` 下的历史探查记录都基于这个口径）。
+⚠️ `analysis/probe.mjs` 刻意使用**移动 UA**，`analysis/pcfetch.mjs` 刻意使用**桌面 UA** ——
+前者用于诊断可达性与历史结构，后者用于生成当前线上口径的夹具。
+**两者都不等于「App 用什么」**：App 从 Sprint 18 起用桌面 UA（见 `HTTPClient.swift`）。
 
 ---
 
@@ -181,8 +207,9 @@ node analysis/decode.mjs _probe/pm_wap.html             # GBK 页面解码 + 打
 
 | 功能 | 现状 | 是否受模板影响 |
 |---|---|---|
-| 读帖正文 / 楼层 / 回复 / 发帖 / 收藏 / 好友 / 私信 | 已实现 | 不受影响（WAP 有对应页面，客户端不依赖 PC 入口） |
-| **列表首图预览** | ✅ **已修（07ed852）** | 元数据检测逐请求改用 PC 模板拿附件图地址；实测可用率 20% → 40%（真实可下载） |
-| 附件上传 | 已实现，待真机验证 | ⚠️ WAP 发帖页的 file 域名未知（游客看不到发帖页）；不排除 WAP 版没有上传域 |
-| **详情页内嵌图片** | 🔸 **待修** | 详情正文仍来自 WAP 楼层 HTML，附件型主题**点进去看不到图** → 与列表首图不一致。修法：详情侧补一次 PC 请求，并需决定呈现位置（正文内 / 顶部图片区） |
-| 「关注」 | 目前走 `.sectionMissing`（当作站点无此栏目） | 🔸 **需修正**：`my.php?item=attention` 真实存在，待接入 |
+| 读帖正文 / 楼层 / 回复 / 发帖 / 收藏 / 关注 / 好友 / 私信 | 已实现 | **不受影响**（解析器 PC 优先 + WAP 兜底；写操作一律走已知接口 + 回读确认） |
+| **列表首图预览** | ✅ **已修（07ed852）** | 全局 PC 模板后直接拿附件图地址；实测可用率 20% → 40%（真实可下载） |
+| **详情页内嵌图片** | ✅ **已修（Sprint 18）** | 详情正文同样来自 PC 模板；`ThreadDetailParser` 把 `div.postattachlist img[file]` 的真实地址追加进楼层正文，`PostContent` 再提取成图片区 —— 列表与详情不再不一致 |
+| **浏览量** | ✅ **新增（Sprint 18）** | PC 模板的 `td.nums > em` 输出浏览量（WAP 模板没有这个字段） |
+| 附件上传 | ✅ 已按 SWFUpload 两步协议实现 | ⚠️ **待真机验证**：`form#imgattachform` 的 `uid`/`hash` 与 `misc.php?action=swfupload` 端点需登录后才看得到；失败会明确报「附件上传失败（帖子未发出）」 |
+| 「关注」 | ✅ **已接入（Sprint 18）** | `my.php?item=attention`（参数 **tid**，关注的是**主题**）；「我的 → 关注」为主题型列表，详情页操作栏有铃铛 |

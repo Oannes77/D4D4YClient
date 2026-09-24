@@ -123,20 +123,13 @@ struct PostContent: View {
                                   options: [.regularExpression, .caseInsensitive])
     }
 
-    /// 从 HTML 中提取所有 `<img src="...">` 的地址，解析为绝对 URL。
+    /// 从楼层正文 HTML 中提取所有内容图片，解析为绝对 URL。
+    ///
+    /// 直接复用 `ThreadImageParser`（**单一真相**）：它会优先取 `file` 属性
+    /// （Discuz 附件图的真实地址写在 `file` 上，`src` 只是占位 `images/common/none.gif`），
+    /// 并统一过滤头像 / 表情 / 图标 / 模板资源 —— 与列表首图的判定口径完全一致。
     static func extractImageURLs(from html: String) -> [URL] {
-        let pattern = #"<img[^>]+src=["']([^"']+)["']"#
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else {
-            return []
-        }
-        let ns = html as NSString
-        let matches = regex.matches(in: html, range: NSRange(location: 0, length: ns.length))
-        return matches.compactMap { match -> URL? in
-            guard match.numberOfRanges > 1, let range = Range(match.range(at: 1), in: html) else {
-                return nil
-            }
-            return Self.resolveURL(String(html[range]))
-        }
+        ThreadImageParser.parseContentImageURLs(from: html)
     }
 
     /// 将（可能为相对/协议相对）的图片地址解析为绝对 URL。

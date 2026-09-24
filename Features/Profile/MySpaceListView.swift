@@ -10,8 +10,11 @@ import SwiftUI
 /// | 正常有内容 | 列表（帖子型点击进详情；用户型点击弹用户卡） |
 /// | 页面正常但没内容 | 明确的空态文案（不编造条目） |
 /// | 命中登录门 | 「需要登录」+ 登录入口 |
-/// | 本站没有这个栏目 | 说明 + 网页版出口（如 Discuz! 7.2 没有「关注」） |
+/// | 本站没有这个栏目 | 说明 + 网页版出口 |
 /// | 结构未识别 / 网络失败 | 原因 + 重试 |
+///
+/// ⚠️ 四栏里只有「好友」是**用户型**；「关注」是**主题型** —— Discuz 的
+/// `my.php?item=attention` 关注的是**帖子**（参数 tid），不是人（见 `MySpaceKind.isUserList`）。
 struct MySpaceListView: View {
     let kind: MySpaceKind
 
@@ -171,7 +174,7 @@ struct MySpaceListView: View {
         case .threads: return "你在本站还没有发表过主题"
         case .replies: return "你在本站还没有回复过"
         case .friends: return "你还没有添加好友"
-        case .follows: return "你还没有关注的人"
+        case .follows: return "你还没有关注任何主题"
         }
     }
 

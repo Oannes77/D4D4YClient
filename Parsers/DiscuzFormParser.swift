@@ -100,6 +100,25 @@ enum DiscuzFormParser {
         }
     }
 
+    /// 附件上传密钥（Discuz SWFUpload **两步协议**第一步要用）。
+    ///
+    /// 发帖页的 `form#imgattachform`（PC 模板）里有两个 hidden：`uid` 与 `hash`。
+    /// 它们和文件一起 POST 到
+    /// `misc.php?action=swfupload&operation=upload&simple=1&type=image`，
+    /// 响应体是纯文本 `DISCUZUPLOAD|0|<aid>`，第 3 段即附件 ID。
+    ///
+    /// 解析不到时返回 nil —— 调用方据此**如实报告**「拿不到上传凭据」，
+    /// 不伪造 aid、不假装上传成功。
+    static func attachmentUploadKeys(in html: String) -> (uid: String, hash: String)? {
+        // 优先限定在附件表单区域内，避免匹配到页面上其它 uid/hash 域。
+        let region = formRegion(in: html, requiring: #"id=["']imgattachform["']"#)
+            ?? formRegion(in: html, requiring: #"swfupload|attachment\.php"#)
+            ?? html
+        let hidden = hiddenInputs(in: region)
+        guard let uid = hidden["uid"], let hash = hidden["hash"] else { return nil }
+        return (uid, hash)
+    }
+
     private static func submitButton(in region: String) -> (name: String, value: String)? {
         guard let m = all(#"<(?:input|button)[^>]*type=["']submit["'][^>]*>"#, in: region).first else { return nil }
         let tag = (region as NSString).substring(with: m.range)

@@ -64,36 +64,26 @@ final class HTTPClient {
         URL(string: path, relativeTo: baseURL)?.absoluteURL
     }
 
-    /// 模拟移动 Safari（**全局默认**）。
+    /// 全局默认请求头 —— **桌面浏览器 UA**（唯一一套，全站统一）。
     ///
-    /// ⚠️ **此站按 User-Agent 分发模板**，不是「对 UA 无限制」：
-    /// 命中移动 UA → 精简的 `templates/wap/`；否则 → 完整 PC 模板。
-    /// 客户端与**全部解析器、`Tests/Fixtures` 夹具**都建立在 WAP 模板之上，
-    /// 所以这里必须保持移动 UA —— 改成 PC 等于换掉所有页面结构（见 `docs/SiteFacts.md`）。
+    /// ⚠️ **本站按 User-Agent 分发两套模板**：移动 UA → 精简 `templates/wap/`；
+    /// 桌面 UA → 完整 PC 模板（同帖 314KB vs 125KB）。WAP 模板里**没有**帖子配图、
+    /// 附件、收藏 / 关注入口，发帖页也没有上传域 —— 所以全局必须用桌面 UA
+    /// （详见 `docs/SiteFacts.md`、`docs/RefProject.md`）。
+    ///
+    /// 取值直接采用 `github.com/webrules/4d4y`（Android，MIT，生产可用）的请求头：
+    /// 它四个页面的**每个请求**都带这一套，因而始终拿到 PC 模板、图片附件全正常。
     private static let defaultHeaders: [String: String] = [
-        "User-Agent": mobileUserAgent,
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "zh-CN,zh;q=0.9",
-    ]
-
-    /// 全局默认：移动 Safari。
-    static let mobileUserAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
-
-    /// 桌面 Safari UA —— **只给「WAP 模板拿不到的信息」用**，别当全局默认。
-    ///
-    /// 唯一已知用途：首图元数据检测（`ImageMetadataRepository`）。
-    /// 附件图在 WAP 模板里**完全不渲染**（页面尾部虽有 `attachimgshow(pid)` 调用，
-    /// 但它要找的 `#aimg_<aid>` 元素根本不存在，属空转）；PC 模板才有
-    /// `<img id="aimg_<aid>" file="https://img02.4d4y.com/forum/attachments/...">`，
-    /// 而该地址游客可直接取到（实测 200 image/*，不需登录、不需 Referer）。
-    static let desktopUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
-
-    /// 需要 PC 模板时用的请求头（配合 `request(path:headers:)` 单次覆盖）。
-    static let desktopHeaders: [String: String] = [
         "User-Agent": desktopUserAgent,
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "zh-CN,zh;q=0.9",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9,zh-CN;q=0.8,zh-TW;q=0.7,zh;q=0.6",
+        "Referer": "https://www.4d4y.com/forum/",
+        "Upgrade-Insecure-Requests": "1",
+        "Cache-Control": "max-age=0",
     ]
+
+    /// 桌面 Chrome / Edge UA（参考实现同款）。
+    static let desktopUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36 Edg/132.0.0.0"
 
     private let session: URLSession
     private let defaultTimeout: TimeInterval

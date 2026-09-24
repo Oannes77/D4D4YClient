@@ -2,12 +2,13 @@ import Foundation
 
 /// 论坛「我的中心」（`my.php`）里的栏目。
 ///
-/// - `threads` / `replies` = 帖子型列表（点击进帖子详情）
-/// - `friends` / `follows`  = 用户型列表（点击弹用户卡）
+/// - `threads` / `replies` / `follows` = 帖子型列表（点击进帖子详情）
+///   —— ⚠️「关注」也是帖子型：`attention` 关注的是**主题**，参数是 tid。
+/// - `friends` = 用户型列表（点击弹用户卡）
 ///
 /// ⚠️ **item 参数不写死**：真实取值由 `MySpaceRepository` 先从 `my.php` 页内导航
 /// **动态发现**，这里只提供兜底候选与「网页版出口」。
-/// 站点若改版换名，客户端会跟着走；站点若根本没有这个栏目（如 Discuz! 7.2 没有「关注」），
+/// 站点若改版换名，客户端会跟着走；站点若根本没有这个栏目（`sectionMissing`），
 /// 界面会如实说明，而不是假装有一份空列表。
 enum MySpaceKind: String, CaseIterable, Identifiable {
     case threads
@@ -47,8 +48,24 @@ enum MySpaceKind: String, CaseIterable, Identifiable {
     }
 
     /// 列表里的一行是**用户**（而非帖子）。
+    ///
+    /// ⚠️ 只有好友是用户型。**「关注」是帖子型** —— Discuz! 的 `my.php?item=attention`
+    /// 关注的是**主题**不是人：站点在发帖表单里用 `attention_add=1`（发帖即关注该帖），
+    /// 关注 / 取消关注走 `my.php?item=attention&action=add&tid=<tid>`（参数是 **tid**）。
+    /// （用户之间的关注是 Discuz X 系列才有的功能，7.2 没有。）
+    /// 早期把 follows 归为用户型，会让列表按 `space.php?uid=` 抽取而一条都认不出。
     var isUserList: Bool {
-        self == .friends || self == .follows
+        self == .friends
+    }
+
+    /// 该栏目的入口**不在**「我的中心」的页内导航里，而在别的页面。
+    ///
+    /// 目前只有「关注」如此：站点把 `[关注此主题的新回复]` 放在**帖子页**的 `favoritewin`
+    /// 弹层里（`my.php?item=attention&action=add&tid=<tid>`），`my.php` 自身的导航未必有它。
+    /// 这类栏目不能凭「导航里没匹配到」就判本站不支持，必须按已知地址试一次。
+    /// （2026-09-24 之前把「关注」当成本站没有的栏目，是错的。）
+    var hasExternalEntry: Bool {
+        self == .follows
     }
 
     /// 动态发现失败时兜底请求的 item 参数（Discuz 习惯命名）。

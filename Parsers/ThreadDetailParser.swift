@@ -1,47 +1,168 @@
 import Foundation
 import SwiftSoup
 
-/// 解析 viewthread.php 帖子详情页。
+/// 解析 viewthread.php 帖子详情页（**两套模板都认**）。
 ///
-/// 真实 DOM（Discuz! 7.2 + 定制 wap 模板，已用 tid=193033 第 1/2 页验证）：
+/// **PC 模板**（全局默认；已用 `tid=193033` 真实页面验证，50 楼全部命中）：
+/// ```
+/// <table id="pid1863080">
+///   <tr>
+///     <td class="postauthor">
+///       <div class="postinfo"><a href="space.php?uid=1142">EC</a></div>
+///       <div class="popupmenu_popup userinfopanel" id="userinfo1863080">…</div>
+///     </td>
+///     <td class="postcontent">
+///       <div class="postinfo">
+///         <strong><a id="postnum1863080" href="javascript:;"><em>1</em><sup>#</sup></a></strong>
+///       </div>
+///       <div class="authorinfo"><em id="authorposton1863080">发表于 2004-7-22 00:42</em>
+///         | …收藏…分享…只看该作者…</div>
+///       <div class="defaultpost">
+///         <div class="postmessage firstpost">        ← 一楼才有 firstpost
+///           <div id="threadtitle"><h1><a>[心得技巧]</a> 标题</h1></div>
+///           <div class="t_msgfontfix">
+///             <table><tr><td class="t_msgfont" id="postmessage_1863080">正文 HTML</td></tr></table>
+///           </div>
+///         </div>
+///       </div>
+///     </td>
+///   </tr>
+/// </table>
+/// ```
+/// 被屏蔽楼层没有 `td.t_msgfont`，只有
+/// `<div class="locked">提示: <em>作者被禁止或删除 内容自动屏蔽</em></div>` —— 仍按合法楼层处理。
 ///
-/// 一楼（只有第 1 页有）：
-/// ```
-/// <div class="w bordertop detail">
-///   <h2><a ...>[心得技巧]</a> Hi-pda PPC有关精华贴汇总...</h2>
-///   <div class="sub"><a href="space.php?uid=1142">EC</a>
-///     <em id="authorposton1863080">发表于 2004-7-22 00:42</em></div>
-///   <div class="detailcon" id="pid1863080">正文 HTML ...</div>
-/// </div>
-/// ```
+/// **WAP 模板**（兜底）：`div.detail` + `li[id^=pid]`，见 `parseWAPFirstPost` / `parseWAPReply`。
 ///
-/// 回复楼（<ul> 内的每个 <li>）：
-/// ```
-/// <li id="pid1863084">
-///   <div class="replytop"><span></span>2#</span><a href="space.php?uid=1142">EC</a>/ 2004-7-22 00:44 </div>
-///   <div class="replycon">正文 HTML ...</div>
-/// </li>
-/// ```
-///
-/// 特殊情况：内容被屏蔽的楼层只有 <div class="locked">提示: 作者被禁止或删除…</div>，
-/// 没有 replycon —— 必须按合法楼层处理。
+/// 实现要点：PC 侧**以 `a[id^=postnum]`（每楼一个）为锚点**往上找所属 `<table>`，
+/// 因此屏蔽楼（无正文格）同样能被列出来，不会因选择器只认 `td.t_msgfont` 而丢楼。
 struct ThreadDetailParser {
 
     enum DetailParseError: Error {
-        /// 页面上既没有一楼也没有任何回复楼（Selector 未匹配或模板改版）
+        /// 页面上既没有 PC 楼层也没有任何 WAP 楼层（Selector 未匹配或模板改版）
         case noPostNodes
     }
 
     static func parse(html: String) throws -> ThreadPage {
         let document = try SwiftSoup.parse(html)
 
+        if let page = parsePC(document: document) { return page }
+        Log.parser.warning("PC 模板未命中楼层，回退 WAP 模板解析")
+        return try parseWAP(document: document)
+    }
+
+    // MARK: - PC 模板
+
+    private static func parsePC(document: Document) -> ThreadPage? {
+        let anchors = (try? document.select("a[id^=postnum]")) ?? Elements()
+        guard anchors.size() > 0 else { return nil }
+
+        let (title, typeName) = parsePCTitle(document: document)
+
+        var posts: [Post] = []
+        for anchor in anchors.array() {
+            if let post = parsePCPost(anchor) { posts.append(post) }
+        }
+        guard !posts.isEmpty else { return nil }
+
+        Log.parser.info("ThreadDetailParser(PC): \(posts.count, privacy: .public) 楼" +
+                        "（含屏蔽楼 \(posts.filter { $0.isBlocked }.count)）")
+        let pageInfo = PaginationParser.parse(document: document)
+            ?? PageInfo(currentPage: 1, totalPages: 1, previousPageURL: nil, nextPageURL: nil)
+        return ThreadPage(title: title, typeName: typeName, posts: posts, pageInfo: pageInfo)
+    }
+
+    /// 标题：`div#threadtitle h1`，文本形如 `[心得技巧] 真实标题`。
+    private static func parsePCTitle(document: Document) -> (String, String?) {
+        guard let h1 = (try? document.select("div#threadtitle h1").first()) ?? nil,
+              let raw = try? h1.text(), !raw.isEmpty else { return ("", nil) }
+        if let groups = raw.capturedGroups(2, pattern: #"^\[([^\]]+)\]\s*(.+)$"#) {
+            return (groups[1], groups[0])
+        }
+        return (raw, nil)
+    }
+
+    private static func parsePCPost(_ anchor: Element) -> Post? {
+        // 所属楼层容器：从楼层号锚点往上找最近的 <table>
+        let container = anchor.parents().array().first { $0.tagName() == "table" }
+
+        // 作者
+        var authorName = "匿名"
+        var authorID: Int?
+        if let container,
+           let link = (try? container.select("td.postauthor div.postinfo > a").first()) ?? nil {
+            authorName = ((try? link.text()) ?? authorName).trimmingCharacters(in: .whitespacesAndNewlines)
+            authorID = uid(from: (try? link.attr("href")) ?? "")
+        }
+
+        // 楼层号：`<a id="postnum…"><em>1</em><sup>#</sup></a>`
+        var floor: Int?
+        if let emText = (try? anchor.select("em").first()?.text()) ?? nil {
+            floor = Int(emText.trimmingCharacters(in: .whitespaces))
+        }
+
+        // 时间
+        var createdAtRaw = ""
+        if let container,
+           let em = (try? container.select("em[id^=authorposton]").first()) ?? nil {
+            createdAtRaw = ((try? em.text()) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        // pid：优先楼层号锚点，其次正文格 id
+        var realPID = pid(fromPostNumID: (try? anchor.id()) ?? "")
+
+        // 正文
+        var htmlContent = ""
+        var isBlocked = false
+        if let container,
+           let msg = (try? container.select("td.t_msgfont[id^=postmessage_]").first()) ?? nil {
+            if realPID == nil { realPID = pid(fromPostMessageID: (try? msg.id()) ?? "") }
+            htmlContent = (try? msg.html()) ?? ""
+
+            // PC 模板把附件图放在与正文同级的 `div.postattachlist` 里（**不在** `td.t_msgfont` 内），
+            // 并且真实地址写在 `file` 属性上（`src` 只是占位 `images/common/none.gif`）。
+            // 这里把它们的真实地址以标准 `<img>` 追加到正文末尾，供上层的图片区提取显示；
+            // 正文本身保持干净（不含标题块与附件文件名列表）。
+            let attachImgs = (try? container.select("div.postattachlist img[file]"))?.array() ?? []
+            for img in attachImgs {
+                guard let file = try? img.attr("file"), !file.isEmpty else { continue }
+                htmlContent += "\n<img src=\"\(file)\" alt=\"附件图\" />"
+            }
+        }
+        if htmlContent.isEmpty {
+            isBlocked = true
+            if let container,
+               let locked = (try? container.select("div.locked").first()) ?? nil,
+               let lockedText = try? locked.text(), !lockedText.isEmpty {
+                htmlContent = lockedText
+            } else {
+                htmlContent = "提示: 作者被禁止或删除 内容自动屏蔽"
+            }
+        }
+
+        let id = Self.resolvePostID(realPID: realPID,
+                                    floor: floor,
+                                    authorName: authorName,
+                                    createdAtRaw: createdAtRaw,
+                                    htmlContent: htmlContent)
+        return Post(id: id,
+                    floor: floor,
+                    authorName: authorName,
+                    authorID: authorID,
+                    createdAt: DiscuzDateParser.parse(createdAtRaw),
+                    createdAtRaw: createdAtRaw,
+                    htmlContent: htmlContent,
+                    isBlocked: isBlocked)
+    }
+
+    // MARK: - WAP 模板（兜底）
+
+    private static func parseWAP(document: Document) throws -> ThreadPage {
         // ---- 标题与分类前缀 ----
         var title = ""
         var typeName: String?
         if let h2 = try? document.select("div.detail h2").first(),
            let raw = try? h2.text() {
-            // 分类前缀形如 "[心得技巧] 真实标题"。用 NSRegularExpression（跨 Swift 版本稳定、
-            // 易单测）提取两个捕获组，不使用 Swift.String.firstMatch(of:)（其参数必须是 Regex 字面量）。
             if let groups = raw.capturedGroups(2, pattern: #"^\[([^\]]+)\]\s*(.+)$"#) {
                 typeName = groups[0]
                 title = groups[1]
@@ -54,29 +175,27 @@ struct ThreadDetailParser {
 
         // ---- 一楼 ----
         if let first = try? document.select("div.detail").first() {
-            posts.append(parseFirstPost(first))
+            posts.append(parseWAPFirstPost(first))
         }
 
         // ---- 回复楼 ----
         let replyNodes = try document.select("li[id^=pid]")
         for node in replyNodes.array() {
-            posts.append(parseReply(node))
+            posts.append(parseWAPReply(node))
         }
 
         guard !posts.isEmpty else {
-            Log.parser.fault("Selector 未匹配任何楼层（div.detail / li[id^=pid] 均为空）")
+            Log.parser.fault("Selector 未匹配任何楼层（PC 与 WAP 都不命中）")
             throw DetailParseError.noPostNodes
         }
-        Log.parser.info("ThreadDetailParser: \(posts.count, privacy: .public) 楼（含一楼=\(posts.first?.floor == 1)）")
+        Log.parser.info("ThreadDetailParser(WAP): \(posts.count, privacy: .public) 楼")
 
         let pageInfo = PaginationParser.parse(document: document)
             ?? PageInfo(currentPage: 1, totalPages: 1, previousPageURL: nil, nextPageURL: nil)
         return ThreadPage(title: title, typeName: typeName, posts: posts, pageInfo: pageInfo)
     }
 
-    // MARK: - 一楼
-
-    private static func parseFirstPost(_ block: Element) -> Post {
+    private static func parseWAPFirstPost(_ block: Element) -> Post {
         let sub = (try? block.select("div.sub").first()) ?? nil
 
         var authorName = "匿名"
@@ -120,15 +239,12 @@ struct ThreadDetailParser {
                     isBlocked: isBlocked)
     }
 
-    // MARK: - 回复楼
-
-    private static func parseReply(_ li: Element) -> Post {
+    private static func parseWAPReply(_ li: Element) -> Post {
         let realPID = Self.pid(fromID: (try? li.id()) ?? "")
 
         let top = (try? li.select("div.replytop").first()) ?? nil
         let fullTopText = (try? top?.text()) ?? ""
 
-        // 作者
         var authorName = "匿名"
         var authorID: Int?
         if let top,
@@ -137,17 +253,14 @@ struct ThreadDetailParser {
             authorID = Self.uid(from: (try? authorLink.attr("href")) ?? "")
         }
 
-        // 楼层："2#"
         var floor: Int?
         if let f = fullTopText.capturedGroup(1, pattern: #"(\d+)\s*#"#) {
             floor = Int(f)
         }
 
-        // 时间："/ 2004-7-22 00:44"
         var createdAtRaw = fullTopText.capturedGroup(
             1, pattern: #"/\s*(\d{4}-\d{1,2}-\d{1,2}(?:\s+\d{1,2}:\d{2})?)"#) ?? ""
 
-        // 正文
         let con = (try? li.select("div.replycon").first()) ?? nil
         var htmlContent = (try? con?.html()) ?? ""
         var isBlocked = false
@@ -200,6 +313,18 @@ struct ThreadDetailParser {
     private static func pid(fromID id: String) -> Int? {
         guard id.hasPrefix("pid") else { return nil }
         return Int(id.dropFirst(3))
+    }
+
+    /// "postnum1863084" -> 1863084
+    private static func pid(fromPostNumID id: String) -> Int? {
+        guard id.hasPrefix("postnum") else { return nil }
+        return Int(id.dropFirst(7))
+    }
+
+    /// "postmessage_1863084" -> 1863084
+    private static func pid(fromPostMessageID id: String) -> Int? {
+        guard id.hasPrefix("postmessage_") else { return nil }
+        return Int(id.dropFirst("postmessage_".count))
     }
 
     /// "space.php?uid=1142" -> 1142

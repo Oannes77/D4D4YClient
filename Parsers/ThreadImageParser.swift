@@ -21,7 +21,11 @@ struct ThreadImageParser {
     /// - Parameter html: viewthread 页面 HTML（已按 GBK/GB18030 解码）。
     /// - Returns: 内容图片 URL 数组；无图时返回空数组。
     static func parseContentImageURLs(from html: String) -> [URL] {
-        let candidates = allImageSources(in: html)
+        // 扫描范围优先收窄到「首帖正文」：语义上首图就该来自首帖，
+        // 且能天然避开 PC 模板整页的模板噪声（PC 页 <img> 数量约为 WAP 的 10 倍以上）。
+        // 收窄失败时退回整页扫描（保持对旧结构的容错）。
+        let scope = firstPostSection(in: html) ?? html
+        let candidates = allImageSources(in: scope)
         var result: [URL] = []
         var seen = Set<String>()
         for src in candidates {
@@ -36,26 +40,46 @@ struct ThreadImageParser {
         return result
     }
 
+    /// 取「首帖正文」那一段 HTML，用于收窄图片扫描范围。
+    ///
+    /// - PC 模板：首个 `div.postmessage` —— 它同时包住正文（`td.t_msgfont`）与
+    ///   **附件图列表**（`div.postattachlist > dl.t_attachlist.attachimg > img[file]`）。
+    ///   ⚠️ 只取 `td.t_msgfont` 会漏掉全部附件图：实测 tid=332225，`t_msgfont` 内 4 张、
+    ///   `postmessage` 内 8 张（差额正是两张附件图 + 两个附件类型图标）。
+    /// - 兜底：`td.postcontent`（少数皮肤不套 `div.postmessage`）
+    /// - WAP 模板：首个 `div.detailcon`
+    ///
+    /// 都取不到（或空）时返回 nil，调用方退回整页扫描。
+    private static func firstPostSection(in html: String) -> String? {
+        guard let doc = try? SwiftSoup.parse(html) else { return nil }
+        let candidates = ["div.postmessage", "td.postcontent", "div.detailcon"]
+        for selector in candidates {
+            guard let el = (try? doc.select(selector).first()) ?? nil,
+                  let outer = try? el.outerHtml(), !outer.isEmpty else { continue }
+            return outer
+        }
+        return nil
+    }
+
     // MARK: - 首帖预览文本
 
     /// 解析首帖纯文本摘要（首页卡片 3 行预览用）。
     ///
     /// 与图片检测共用同一次 viewthread 请求，不额外发请求。
     ///
-    /// ⚠️ 必须**同时支持两套模板的容器名** —— 元数据检测走的是 PC 模板
-    /// （为了拿到附件图，见 `ImageMetadataRepository.detect`），而其余流程走 WAP：
+    /// ⚠️ 必须**同时支持两套模板的容器名**（工具脚本与历史夹具仍可能是 WAP 页面）：
+    /// - PC ：首帖 `td.t_msgfont`（`id="postmessage_<pid>"`）—— 当前全局模板
     /// - WAP：首帖 `div.detailcon`、回复 `div.replycon`
-    /// - PC ：首帖 `td.t_msgfont`（`id="postmessage_<pid>"`）
-    /// 顺序仍是「先 WAP 首帖 → WAP 回复 → PC 首帖」，对两套模板都能取到。
+    /// 按「PC 首帖 → WAP 首帖 → WAP 回复」取第一个可用块。
     /// - Parameter limit: 截断字数（默认 120，首页 3 行足够）。
     static func parsePreviewText(from html: String, limit: Int = 120) -> String? {
         do {
             let doc = try SwiftSoup.parse(html)
-            let wapFirst = try doc.select("div.detailcon").first()
-            let wapReply = try doc.select("div.replycon").first()
             let pcFirst = try doc.select("td.t_msgfont").first()
                 ?? doc.select("[id^=postmessage_]").first()
-            guard let block = wapFirst ?? wapReply ?? pcFirst else { return nil }
+            let wapFirst = try doc.select("div.detailcon").first()
+            let wapReply = try doc.select("div.replycon").first()
+            guard let block = pcFirst ?? wapFirst ?? wapReply else { return nil }
             var text = try block.text()
             text = text.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
                 .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -153,17 +177,23 @@ struct ThreadImageParser {
         excludedKeywords.contains { lowercased.contains($0) }
     }
 
-    /// 是否「真实内容图片」候选：
-    /// 1) 必须属于 4D4Y 论坛域（排除外链广告图）；
-    /// 2) 不在拒绝列表内；
-    /// 3) 优先识别 img02 CDN 内容图；相对路径含 attachment/data 也接受。
+    /// 是否「真实内容图片」候选。
+    ///
+    /// ⚠️ **不要求图片必须托管在 4d4y.com**：老帖（2004–2006）的配图大量存放在当年的
+    /// 第三方图床（实测 tid=332225 首帖 4 张图全在 `pic.eawan.com`；tid=332225 的附件图
+    /// 则在 `img02.4d4y.com`）。限定同域会把外链那一批整批丢掉。
+    /// 改判据为「**不在噪声列表内的 http(s) 图片**」—— 模板 / 表情 / 头像 / 图标都在同一
+    /// 站点上，已由 `excludedKeywords` 拦住；正文里的外链基本就是作者贴的内容图。
     private static func isContentImage(_ lowercased: String) -> Bool {
-        guard lowercased.contains("4d4y.com") else { return false }
+        guard lowercased.hasPrefix("http://") || lowercased.hasPrefix("https://") else { return false }
         guard !isExcluded(lowercased) else { return false }
-        // 内容图通常位于 img02 CDN 或附件路径
-        if lowercased.contains("img02.4d4y.com/forum/") { return true }
-        if lowercased.contains("attachment") || lowercased.contains("data/") { return true }
-        // 同域其它图片（已排除模板/表情/头像）保守接受
+        guard !adKeywords.contains(where: { lowercased.contains($0) }) else { return false }
         return true
     }
+
+    /// 明显的广告 / 统计像素域名（防御性排黑，不是白名单）。
+    private static let adKeywords: [String] = [
+        "doubleclick", "googlesyndication", "google-analytics", "googleadservices",
+        "adservice", "/ads/", "ad_banner", "banner_ad", "spacer.gif",
+    ]
 }

@@ -136,6 +136,7 @@ final class SessionManager: ObservableObject {
         clearAuthCookies()
         loginForm = nil
         self.state = .guest
+        Self.clearServerBackedCaches()
     }
 
     /// 退出登录：本地清凭据为权威行为；同时尽力通知服务端作废会话（best-effort，不阻塞）。
@@ -145,6 +146,19 @@ final class SessionManager: ObservableObject {
         loginForm = nil
         Task { await bestEffortServerLogout() }
         self.state = .guest
+        Self.clearServerBackedCaches()
+    }
+
+    /// 清掉「服务器真源」类的内存缓存。
+    ///
+    /// 收藏 / 关注都是**服务器上的数据**（`my.php?item=…`）。退出登录后若还留着上一账号的
+    /// tid 集合，详情页会显示成已收藏 / 已关注的星标与铃铛 —— 那是在替游客「假装」服务器状态，
+    /// 属于必须避免的假象。所以登出与掉线都清一次。
+    private static func clearServerBackedCaches() {
+        Task { @MainActor in
+            FavoritesStore.shared.clear()
+            AttentionStore.shared.clear()
+        }
     }
 
     // MARK: - 私有

@@ -18,8 +18,7 @@ struct SearchResultsView: View {
 
     @Environment(\.colorScheme) private var scheme
     @Environment(\.modelContext) private var modelContext
-    /// 本地收藏（书签）：与首页 / 详情页共用同一份数据。
-    /// 收藏状态（论坛服务器真源，登录后可用）。
+    /// 收藏状态（论坛服务器真源 `my.php?item=favorites`，登录后可用）：与首页 / 详情页共用同一份数据。
     @ObservedObject private var favorites = FavoritesStore.shared
     @StateObject private var viewModel = SearchViewModel()
     @State private var selectedThread: HomeThreadItem?

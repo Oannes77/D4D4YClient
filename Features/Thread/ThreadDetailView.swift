@@ -8,8 +8,9 @@ import UIKit
 /// - 首帖置顶 + 回复楼层流（ScrollView + ScrollViewReader）。
 /// - 每条作者名旁「眼睛」→ 只看该作者（互斥）。
 /// - 点「回复」→ 跳最后回复 + 底部回复 Sheet；长按某楼 → 引用并弹回复 Sheet。
-/// - 操作栏四图标全部做真实的事：回复 / 分享（系统分享该帖链接）/
-///   收藏（论坛服务器收藏 `my.php?item=favorites`）/ 举报（复制链接 + 私信管理员）/ 网页版。
+/// - 操作栏六图标全部做真实的事：回复 / 分享（菜单：系统分享 + 分享给好友）/
+///   收藏（论坛服务器收藏 `my.php?item=favorites`）/ 关注（关注本主题的新回复
+///   `my.php?item=attention`）/ 举报（复制链接 + 私信管理员）/ 网页版。
 /// - 楼层正文图片：点缩略图进全屏画廊，可左右滑浏览本楼层全部图片。
 /// - 本地作者屏蔽：命中 `BlockedUser` 时 `PostContent` 显示「该用户内容已隐藏」。
 struct ThreadDetailView: View {
@@ -18,9 +19,10 @@ struct ThreadDetailView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.colorScheme) private var scheme
     @Query private var blockedUsers: [BlockedUser]
-    /// 本地收藏（书签）列表：用于星标状态实时联动。
     /// 收藏状态：来自论坛服务器（`my.php?item=favorites&type=thread`），登录后可用。
     @ObservedObject private var favorites = FavoritesStore.shared
+    /// 关注状态：同样来自服务器（`my.php?item=attention`，关注的是**本主题**的新回复）。
+    @ObservedObject private var attentions = AttentionStore.shared
 
     /// 楼层正文多图：点缩略图进全屏画廊，可左右滑浏览本楼层全部图片。
     @State private var presentedGallery: FullScreenGallery?
@@ -70,9 +72,14 @@ struct ThreadDetailView: View {
         return blockedUIDs.contains(uid)
     }
 
-    /// 当前帖子是否已本地收藏。
+    /// 当前帖子是否已收藏（服务器 `my.php?item=favorites&type=thread`）。
     private var isThreadSaved: Bool {
         favorites.contains(viewModel.thread.id)
+    }
+
+    /// 当前帖子是否已关注新回复（服务器 `my.php?item=attention`）。
+    private var isThreadAttended: Bool {
+        attentions.contains(viewModel.thread.id)
     }
 
     /// 帖子网页地址（系统分享 / 浏览器打开用）。相对 `HTTPClient.baseURL` 解析，不硬编码域名。
@@ -104,6 +111,7 @@ struct ThreadDetailView: View {
                 .background(Color.appBackground(scheme))
                 .task {
                     await favorites.refresh()
+                    await attentions.refresh()
                     await viewModel.loadDemo()
                     // 截图「回复楼层」目标：加载完成后滚到页尾，
                     // 让 50 楼回复流与分页条出现在截图里。
@@ -163,6 +171,7 @@ struct ThreadDetailView: View {
                 .task {
                     await viewModel.loadFirstPage()
                     await favorites.refresh()
+                    await attentions.refresh()
                 }
                 .onAppear { recordReadHistory() }
                 .onDisappear { recordLastReadPost() }
@@ -222,6 +231,7 @@ struct ThreadDetailView: View {
                             isBlocked: isBlocked(post),
                             threadURL: threadWebURL,
                             isSaved: isThreadSaved,
+                            isAttended: isThreadAttended,
                             onlyAuthorUID: $onlyAuthorUID,
                             onUser: { uid, name in
                                 selectedUser = uid
@@ -242,6 +252,7 @@ struct ThreadDetailView: View {
                                 presentedGallery = FullScreenGallery(urls: urls, startIndex: start)
                             },
                             onToggleSave: { toggleSaveThread() },
+                            onToggleAttention: { toggleAttendThread() },
                             onUnblock: {
                                 // 取消本地拉黑（与论坛管理员的处罚无关）。
                                 if let uid = post.authorID {
@@ -332,6 +343,26 @@ struct ThreadDetailView: View {
         Task {
             if await favorites.toggle(tid: viewModel.thread.id) == nil {
                 actionNotice = favorites.lastError ?? "收藏未能确认，请稍后在「我的 → 收藏」里核对。"
+            }
+        }
+    }
+
+    // MARK: - 关注（论坛服务器真源）
+
+    /// 关注 / 取消关注**本主题的新回复**。
+    ///
+    /// 站点 PC 模板的原样地址是 `my.php?item=attention&action=add&tid=<tid>` ——
+    /// 注意参数是 **tid**：Discuz 7.2 的「关注」关注的是**主题**，不是人。
+    /// 需要登录；结果以回读关注列表（`my.php?item=attention`）为唯一判据，
+    /// 没确认成功就如实提示，不做乐观更新。
+    private func toggleAttendThread() {
+        guard DemoMode.isOn || SessionManager.shared.state.isAuthenticated else {
+            actionNotice = "关注需要登录：登录后才能在「我的 → 关注」里看到你关注的主题。"
+            return
+        }
+        Task {
+            if await attentions.toggle(tid: viewModel.thread.id) == nil {
+                actionNotice = attentions.lastError ?? "关注未能确认，请稍后在「我的 → 关注」里核对。"
             }
         }
     }
