@@ -32,6 +32,12 @@
 - 🔴 Sprint 18 起，客户端**全局改用桌面 UA**，走站点 PC 模板 —— 图片 / 附件 / 浏览量 /
   发帖上传 / 关注入口由此全部变成真实的。**本文档里所有基于 WAP 模板的判断都要按此重读**，
   凡是写成「站点没有 / 受模板限制做不到」的，先回去查是不是只看到了一半页面。
+- 🔴 Sprint 18.1 起，**演示夹具也一律用 PC 模板页面**（`Demo/DemoFixtures/*_pc.html`）。
+  理由：演示跑 WAP、线上跑 PC 时，截图「看着没问题」并不等于线上没问题 ——
+  验收通道本身就是唯一的验证手段，不能让它验的和跑的不是同一套东西。
+- 🔴 演示图源**不用外网占位图**（`placehold.co` 之类）：CI 网络一抖就转圈，
+  看过去像「图片功能坏了」（Sprint 13 踩过）。改用论坛自己的附件图地址（实测 200 OK），
+  顺带证明客户端真能下载论坛图片。
 
 ### UI 硬约定（改界面时不可违反）
 
@@ -49,6 +55,7 @@
 | 用户卡 | 头像 + 名 + 签名 + 信息框 + 加好友/删好友 + 私信 + 搜贴 + 拉黑（本地）；无 @handle |
 | 时间 | 客户端自产时间用 `Shared/RelativeDateText`（今天 09:02 / 昨天 21:04 / 9月18日）；论坛给的 `timeRaw` **原样显示** |
 | 列表密度 | 8 / 12 / 18，在 `PostRow` / `PostCell` / `ThreadListView` **同一口径** |
+| 列表行数字 | **只显示站点真有的字段**：回复数 / 浏览量（PC 模板才有）。曾经为了「凑满一行」摆过一颗金色 ◇ 积分 —— 那是**演示数据专属、线上永远为 nil** 的数字，等于让验收图通过一个生产环境不存在的布局，已删除（Sprint 18.1）。拿不到就留空，不编 |
 
 ### 工程约定
 
@@ -109,10 +116,11 @@
 | 1 | `home` | 首页（点胶囊进板块 / 滑胶囊条换板块） | home-post-open | 全量 |
 | 2 | `thread` | 帖子详情（首帖 + 六键操作栏，含新增的「关注主题」铃铛） | detail-reply（滚到 post-share） | 全量 |
 | 2b | `thread`（`threadShareMenu`） | 点开分享菜单：系统分享 / 分享给好友 | detail-reply → 点 post-share | 全量 |
+| 2c | `threadImages` | 🆕 带 5 张附件图的主题（证明**详情页真的能看到图**） | detail-reply（滚到 post-share） | ✅ |
 | 3 | `threadReplies` | 帖子回复楼层（滚页尾：50 楼 + 分页条） | detail-page-prev | 全量 |
 | 4 | `reply` | 回复框 Sheet | 取消 | 全量 |
 | 5 | `userCard` | 用户卡片 Sheet | 加好友 | 全量 |
-| 6 | `imageViewer` | 图片全屏预览（Demo 用本地占位图） | — | 全量 |
+| 6 | `imageViewer` | 图片全屏预览（图源 = **论坛自己的附件图**，不再用 placehold.co） | — | 全量 |
 | 7 | `search` | 搜索结果 | home-post-open | 全量 |
 | 8 | `newPost` | 发帖页 | 发布 | 全量 |
 | 9 | `boardManage` | 板块管理 | 添加 | 全量 |
@@ -130,14 +138,14 @@
 | 21 | `security` | 账号与安全 | 退出登录 | 全量 |
 | 22 | `login` | 登录页 | 登录 | 全量 |
 
-默认只跑**待验收**的 `AppScreenshotTests.targets`（Sprint 18 为 9 个界面 = 18 张：home / thread /
-threadShareMenu / userCard / newPost / savedThreads / replyPlaceholder / reportChat / myFollows）；
-需要全量回归时在 Codemagic 设 `SCREENSHOT_FULL=1`，跑满 22 个界面 = 44 张。
+默认只跑**待验收**的 `AppScreenshotTests.targets`（Sprint 18.1 为 10 个界面 = 20 张：home / thread /
+threadShareMenu / threadImages / userCard / newPost / savedThreads / replyPlaceholder / reportChat /
+myFollows）；需要全量回归时在 Codemagic 设 `SCREENSHOT_FULL=1`，跑满 23 个界面 = 46 张。
 
 ## 三、验收方式
 
-1. Codemagic **手动触发** `Screenshots` workflow（默认只跑 `targets`，Sprint 18 为 18 张。
-   `SCREENSHOT_FULL=1` 时连 `confirmedTargets` 一起跑，22 界面 = 44 张）。
+1. Codemagic **手动触发** `Screenshots` workflow（默认只跑 `targets`，Sprint 18.1 为 20 张。
+   `SCREENSHOT_FULL=1` 时连 `confirmedTargets` 一起跑，23 界面 = 46 张）。
 2. 用户一次性浏览，圈出不满意的界面。
 3. 我按圈出的界面集中改一轮 → 再跑一次 → 收敛。
 

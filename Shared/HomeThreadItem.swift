@@ -15,12 +15,9 @@ struct HomeThreadItem: Identifiable, Hashable {
     let previewBody: String      // 预览正文（首页 3 行截断，详情页展开全文）
     let createdAtRaw: String     // 相对/原始时间
     let replies: Int
-    /// 以下三项为论坛列表页不输出的字段：真实模式下为 nil（界面隐藏对应数字），
-    /// Demo 样例才有值。不伪造数字。
-    let shares: Int?             // 站内转发（论坛原生转发给用户名）
-    let favorites: Int?          // 收藏数（论坛原生收藏）
-    let points: Int?             // 积分（替代「赞」的语义位置）
-    let views: Int?              // 浏览量（PC 模板的 td.nums > em 会输出；WAP 模板没有）
+    /// 浏览量。**PC 模板的 `td.nums > em` 会输出**（切模板前 WAP 页面没有，所以恒为 nil）。
+    /// 拿不到时界面隐藏这个数字，不编一个。
+    let views: Int?
     let hasImage: Bool
     let imageURL: URL?           // 第一张正文图（列表只显一张）
     let hasAttachment: Bool
@@ -40,9 +37,6 @@ extension HomeThreadItem {
             previewBody: info.previewText ?? previewBody,
             createdAtRaw: createdAtRaw,
             replies: replies,
-            shares: shares,
-            favorites: favorites,
-            points: points,
             views: views,
             hasImage: info.hasImage || hasImage,
             imageURL: info.previewImageURL ?? imageURL,

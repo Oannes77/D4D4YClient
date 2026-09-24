@@ -12,9 +12,7 @@ enum DemoData {
     // MARK: - 样例模型
 
     /// 帖子详情 Tab 使用的样例主题（真实 tid 与夹具对应）。
-    /// 帖子详情 Demo 使用的样例主题，标题与 `viewthread_tid193033_page1.html` 夹具保持一致，
-    /// 避免首页点进来后导航栏标题与正文内容出现明显错位。
-    /// 帖子详情 Demo 使用的样例主题，标题与 `viewthread_tid193033_page1.html` 夹具保持一致，
+    /// 标题与 `viewthread_tid193033_page1_pc.html` 夹具保持一致，
     /// 避免首页点进来后导航栏标题与正文内容出现明显错位。
     static let sampleThread = ForumThread(
         id: 193033,
@@ -30,6 +28,27 @@ enum DemoData {
         lastReplyAtRaw: "2004-7-22 00:44"
     )
 
+    /// 带**图片附件的主题**样例（真实 tid = 439576，[HPC] netbook pro 图解全攻略）。
+    ///
+    /// 为什么单独留一条：Sprint 18 把客户端切到站点 PC 模板后，
+    /// 「详情页能看到正文图 / 附件图」是这一轮最核心的用户可见成果，
+    /// 而 193033（PPC 精华帖）本身是纯文字帖 —— 用它截图**证明不了**这件事。
+    /// 439576 首帖含 5 张附件图（全部托管在 `img02.4d4y.com`，实测 200 image/jpeg），
+    /// 截图里能直接看到图片网格，而不是一句「该帖没有图」。
+    static let sampleThreadWithImages = ForumThread(
+        id: 439576,
+        title: "[HPC] netbook pro图解全攻略（上手、刷系统、输入法、常用软件、wifi、蓝牙连接手机上网）",
+        typeName: "[HPC]",
+        authorName: "yuanchao",
+        authorID: nil,
+        createdAt: nil,
+        createdAtRaw: "2008-10-18 22:52",
+        replies: 33,
+        views: 19231,
+        lastReplyUserName: nil,
+        lastReplyAtRaw: nil
+    )
+
     /// 图片预览 Tab 使用的本地样例图（随 App 打包，无需联网即可加载）。
     static var sampleImageURL: URL? {
         Bundle.main.url(forResource: "demo_sample", withExtension: "png")
@@ -37,20 +56,32 @@ enum DemoData {
 
     // MARK: - 夹具解析（离线）
 
-    /// 解析仓库内 `forumdisplay_fid14_page1.html` 得到主题列表页。
+    /// 解析仓库内 `forumdisplay_fid14_page1_pc.html` 得到主题列表页。
+    ///
+    /// ⚠️ 演示夹具统一用**站点 PC 模板**页面（`*_pc.html`），与生产路径同一套解析器 ——
+    /// 否则截图验收的是一套模板、线上跑的是另一套，「看着没问题」并不等于真的没问题。
     static func loadForumDisplayFixture() -> ThreadListPage? {
-        guard let url = Bundle.main.url(forResource: "forumdisplay_fid14_page1", withExtension: "html"),
+        guard let url = Bundle.main.url(forResource: "forumdisplay_fid14_page1_pc", withExtension: "html"),
               let data = try? Data(contentsOf: url) else { return nil }
         let html = String(data: data, encoding: String.Encoding(rawValue: 2147485234))
             ?? String(data: data, encoding: .utf8) ?? ""
         return try? ThreadListParser.parse(html: html)
     }
 
-    /// 解析仓库内 `viewthread_tid193033_page1.html` 得到帖子详情页。
+    /// 帖子详情演示用夹具（tid → 随 App 打包的资源名）。
+    ///
+    /// 两份都是**站点 PC 模板的真实页面**（与生产路径同一套解析器），
+    /// 只是内容不同：193033 纯文字（50 楼，含 1 个论坛侧屏蔽楼），439576 首帖带 5 张附件图。
+    private static let viewthreadFixtures: [Int: String] = [
+        193033: "viewthread_tid193033_page1_pc",
+        439576: "viewthread_tid439576_page1_pc"
+    ]
+
+    /// 解析仓库内 `viewthread_tid<tid>_page1_pc.html` 得到帖子详情页。
     /// 与论坛真实规则一致：第一页 = 首帖 + 最多 49 条回复（共 50 楼），再往下走翻页。
-    /// Demo 正文已用 SwiftUI Text 同步渲染（高度首帧确定），50 楼不会阻塞主线程。
-    static func loadViewthreadFixture() -> ThreadPage? {
-        guard let url = Bundle.main.url(forResource: "viewthread_tid193033_page1", withExtension: "html"),
+    static func loadViewthreadFixture(tid: Int) -> ThreadPage? {
+        let name = viewthreadFixtures[tid] ?? viewthreadFixtures[193033]!
+        guard let url = Bundle.main.url(forResource: name, withExtension: "html"),
               let data = try? Data(contentsOf: url) else { return nil }
         let html = String(data: data, encoding: String.Encoding(rawValue: 2147485234))
             ?? String(data: data, encoding: .utf8) ?? ""
@@ -129,7 +160,7 @@ enum DemoData {
         let imageInfo = ThreadMediaInfo(
             tid: threads[0].id,
             hasImage: true,
-            previewImageURL: URL(string: "https://img02.4d4y.com/forum/uc_server/data/avatar/000/00/00/001_avatar_big.jpg"),
+            previewImageURL: URL(string: "https://img02.4d4y.com/forum/attachments/day_081018/P1180393_g7ujU4QIW6pX.jpg"),
             hasAttachment: false
         )
         let attachmentInfo = ThreadMediaInfo(
@@ -145,7 +176,12 @@ enum DemoData {
     // MARK: - 首页信息流样例（Threads 风格卡片）
 
     /// 首页 Discovery 板块主题流样例：含标题 / 预览正文 / 单图 / 附件 / 统计，
-    /// 供首页卡片渲染（不触发网络）。真实模式将由 `forumdisplay` 解析 + 媒体感知合并替代。
+    /// 供首页卡片渲染（不触发网络）。
+    ///
+    /// ⚠️ 首图用的是**论坛自己的附件图地址**（`img02.4d4y.com`，2008 年的老附件、实测 200 OK），
+    /// **不再用 `placehold.co`**：Sprint 13 已经吃过一次亏 —— CI 网络一抖，外网占位图就一直转圈，
+    /// 截图看过去像「图片功能坏了」。而且拿站点真图当样例，顺带就证明了「客户端确实能下载论坛图片」
+    /// （这正是 Sprint 18 换模板要解决的问题）。
     static func homeFeedDemo() -> [HomeThreadItem] {
         [
             HomeThreadItem(
@@ -158,12 +194,9 @@ enum DemoData {
                 previewBody: "以前ch4chen曾经编制过一篇hi-pda中PPC精华贴的汇总，但是上次网难以后，所有链接失效了，最近下定决心，重新将16页、每页40条、共约600条精华贴全部翻了出来。",
                 createdAtRaw: "2 小时前",
                 replies: 36,
-                shares: 12,
-                favorites: 48,
-                points: 1520,
                 views: 3820,
                 hasImage: true,
-                imageURL: URL(string: "https://placehold.co/600x400/534AB7/FFFFFF/png?text=PPC+Essentials"),
+                imageURL: URL(string: "https://img02.4d4y.com/forum/attachments/day_081018/P1180391_lovhcAbNQvOB.jpg"),
                 hasAttachment: false,
                 attachmentCount: 0
             ),
@@ -180,12 +213,9 @@ enum DemoData {
                 previewBody: "eBay 淘的 Treo 650 到货，键盘回弹比现代触屏舒服太多。刷了最新的 ROM，还能上 GPRS。复古 PDA 真香，准备写个长期把玩帖。",
                 createdAtRaw: "昨天",
                 replies: 102,
-                shares: 41,
-                favorites: 220,
-                points: 5310,
                 views: 12030,
                 hasImage: true,
-                imageURL: URL(string: "https://placehold.co/600x400/8F86E8/FFFFFF/png?text=Palm+Treo+650"),
+                imageURL: URL(string: "https://img02.4d4y.com/forum/attachments/day_081018/P1180392_1tKYjzR4l2kg.jpg"),
                 hasAttachment: false,
                 attachmentCount: 0
             ),
@@ -199,9 +229,6 @@ enum DemoData {
                 previewBody: "换了卷新 PETG，255℃ 还是拉丝严重，底板 65℃。是不是料太潮了？大家 PETG 一般怎么存，有没有推荐的烘干参数。",
                 createdAtRaw: "5 小时前",
                 replies: 23,
-                shares: 3,
-                favorites: 8,
-                points: 430,
                 views: 1290,
                 hasImage: false,
                 imageURL: nil,
@@ -218,9 +245,6 @@ enum DemoData {
                 previewBody: "现在基本都走 WiFi/OctoEverywhere 了，SD 卡反而容易丢文件。但断网的时候还是物理卡稳，纠结要不要保留这个习惯。",
                 createdAtRaw: "昨天",
                 replies: 17,
-                shares: 1,
-                favorites: 5,
-                points: 210,
                 views: 760,
                 hasImage: false,
                 imageURL: nil,

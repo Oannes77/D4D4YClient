@@ -185,6 +185,26 @@ final class D4D4YClientTests: XCTestCase {
                       "老帖的外链图床不要求同域，否则会被误过滤")
     }
 
+    /// 带图主题（PC 模板）：首帖 5 张附件图必须全部被解析出来。
+    ///
+    /// 这份夹具同时被**截图验收**使用（`ScreenshotScreen.threadImages` → `DemoData.sampleThreadWithImages`），
+    /// 所以它一旦解析不出图片，验收图就会退化成「一张没有图的详情页」而没人察觉。
+    func testThreadDetailParser_pcTemplate_withImageAttachments() throws {
+        let html = decodedFixture("viewthread_tid439576_page1_pc")
+        let page = try ThreadDetailParser.parse(html: html)
+
+        XCTAssertEqual(page.posts.count, 34, "1 楼 + 33 回复")
+        let first = try XCTUnwrap(page.posts.first)
+        XCTAssertEqual(first.floor, 1)
+        XCTAssertEqual(first.authorName, "yuanchao")
+        XCTAssertFalse(first.isBlocked)
+
+        let urls = ThreadImageParser.parseContentImageURLs(from: first.htmlContent)
+        XCTAssertEqual(urls.count, 5, "首帖 5 张附件图")
+        XCTAssertTrue(urls.allSatisfy { $0.absoluteString.contains("img02.4d4y.com/forum/attachments/") },
+                      "真实地址写在 file 属性上（src 只是 images/common/none.gif 占位）")
+    }
+
     /// 权威接口地址必须**真的写在站点 PC 模板里** —— 这两个字符串是收藏与关注的唯一依据，
     /// 写错了会让「收藏 / 关注」全部落空，所以用真实夹具把它们钉住。
     func testAuthorityURLs_comeFromRealPCTemplate() throws {

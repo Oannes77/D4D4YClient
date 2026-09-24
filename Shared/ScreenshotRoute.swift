@@ -8,6 +8,7 @@ import SwiftData
 enum ScreenshotScreen: String, CaseIterable {
     case home                // 首页（板块主题流）
     case thread              // 帖子详情（首帖 + 回复楼层 + 分页条）
+    case threadImages        // 帖子详情：带 5 张附件图的主题（验证「详情页能看到图」）
     case threadReplies       // 帖子回复楼层（滚到页尾：回复流 + 分页条）
     case reply               // 回复框 Sheet
     case userCard            // 用户卡片 Sheet
@@ -95,6 +96,14 @@ struct ScreenshotRouteView: View {
                 ThreadDetailView(thread: DemoData.sampleThread, forumID: 2)
             }
             .background(Color.appBackground(scheme))
+        case .threadImages:
+            // Sprint 18 的核心成果是「切到 PC 模板后详情页终于能看到图片」。
+            // 193033 是纯文字帖，用它截图证明不了这件事，故专设一个带 5 张附件图的主题
+            // （真实 tid 439576，图都托管在 img02.4d4y.com）。
+            NavigationStack {
+                ThreadDetailView(thread: DemoData.sampleThreadWithImages, forumID: 2)
+            }
+            .background(Color.appBackground(scheme))
         case .threadReplies:
             NavigationStack {
                 ThreadDetailView(thread: DemoData.sampleThread, forumID: 2, jumpToLastReply: true)
@@ -113,11 +122,13 @@ struct ScreenshotRouteView: View {
                     UserCardSheet(userID: 1024, fallbackName: "老橡树")
                 }
         case .imageViewer:
-            // 多图画廊：顶部会显示「1 / 3」页码，左右可滑（Demo 用占位图，不依赖真实网络图源）。
+            // 多图画廊：顶部会显示「1 / 3」页码，左右可滑。
+            // 图源用**论坛自己的附件图**（实测 200 OK），不用 placehold.co：
+            // 外网占位图在 CI 上一抖就转圈，会把「图片功能正常」误判成坏了（Sprint 13 踩过）。
             ImageViewer(urls: [
-                URL(string: "https://placehold.co/1200x800/534AB7/FFFFFF/png?text=4D4Y+1")!,
-                URL(string: "https://placehold.co/1200x800/8F86E8/FFFFFF/png?text=4D4Y+2")!,
-                URL(string: "https://placehold.co/1200x800/2E2A5C/FFFFFF/png?text=4D4Y+3")!
+                URL(string: "https://img02.4d4y.com/forum/attachments/day_081018/P1180391_lovhcAbNQvOB.jpg")!,
+                URL(string: "https://img02.4d4y.com/forum/attachments/day_081018/P1180392_1tKYjzR4l2kg.jpg")!,
+                URL(string: "https://img02.4d4y.com/forum/attachments/day_081018/P1180393_g7ujU4QIW6pX.jpg")!
             ], startIndex: 0)
         case .search:
             NavigationStack { SearchResultsView() }

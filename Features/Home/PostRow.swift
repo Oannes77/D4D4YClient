@@ -137,14 +137,6 @@ struct PostRow: View {
                 }
                 .foregroundStyle(isSaved ? Color.appGold(scheme) : Color.appTextSecondary(scheme))
 
-                HStack(spacing: 3) {
-                    Image(systemName: "diamond")
-                    if let points = item.points {
-                        Text("\(points)").font(.caption)
-                    }
-                }
-                .foregroundStyle(Color.appGold(scheme))
-
                 if let views = item.views {
                     HStack(spacing: 3) {
                         Image(systemName: "eye")

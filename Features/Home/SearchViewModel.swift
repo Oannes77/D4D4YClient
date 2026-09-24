@@ -61,9 +61,6 @@ final class SearchViewModel: ObservableObject {
             previewBody: "",               // 列表页无正文
             createdAtRaw: thread.createdAtRaw,
             replies: thread.replies ?? 0,
-            shares: nil,
-            favorites: nil,
-            points: nil,
             views: thread.views,
             hasImage: false,
             imageURL: nil,

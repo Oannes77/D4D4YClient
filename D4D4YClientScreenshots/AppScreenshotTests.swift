@@ -61,6 +61,12 @@ final class AppScreenshotTests: XCTestCase {
         Target(screen: "thread",       waitElement: "detail-reply",   settle: 0.6,
                scrollToElement: "post-share", tapElement: "post-share",
                tapWaitText: "分享给好友", name: "threadShareMenu"),
+        // ②c 详情页图片：Sprint 18 最核心的用户可见成果（全局切桌面 UA / PC 模板后，正文图与附件图才拿得到）。
+        //    用真实带图主题（tid=439576，首帖 5 张附件图，全部托管在 img02.4d4y.com）。
+        //    图片网格在长正文下方、首屏之外，所以先滚到操作栏 —— 网格就贴在它上方，必然入镜。
+        //    settle 给足 2.5s：5 张远程图要真的下载完，否则拍到的是加载占位。
+        Target(screen: "threadImages", waitElement: "detail-reply",   settle: 2.5,
+               scrollToElement: "post-share"),
         // ③ 用户卡：加好友 / 搜贴 / 拉黑 三键真实化（不再是空按钮）
         Target(screen: "userCard",     waitElement: "加好友",          settle: 1.2),
         // ④ 发帖页：图片 / 附件选择与预览条

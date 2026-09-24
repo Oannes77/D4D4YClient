@@ -12,7 +12,7 @@ final class ThreadDetailViewModel: ObservableObject {
         self.repository = repository
         // 演示模式：初始化即同步就绪，跳过 idle→loaded 的内容高度跳变，
         // 避免 SwiftUI ScrollView 在内容骤然变长后初始 offset 漂移到长帖中部。
-        if DemoMode.isOn, let pageData = DemoData.loadViewthreadFixture() {
+        if DemoMode.isOn, let pageData = DemoData.loadViewthreadFixture(tid: thread.id) {
             state = .loaded(pageData)
         }
     }
@@ -38,8 +38,9 @@ final class ThreadDetailViewModel: ObservableObject {
     }
 
     /// 演示模式：离线解析仓库内 viewthread 夹具，避免联网（仅 `-DemoMode` 调用）。
+    /// 夹具按 tid 选：纯文字帖 193033、带 5 张附件图的 439576（见 `DemoData.viewthreadFixtures`）。
     func loadDemo() async {
-        guard let pageData = DemoData.loadViewthreadFixture() else {
+        guard let pageData = DemoData.loadViewthreadFixture(tid: thread.id) else {
             state = .failed(message: "演示数据缺失", debugDetail: "viewthread 夹具未找到")
             return
         }
