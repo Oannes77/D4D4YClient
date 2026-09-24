@@ -286,3 +286,18 @@ Sprint 13 就记过一笔：全屏画廊用外网占位图，「CI 网络一抖�
 
 9 界面 / 18 张 → **10 界面 / 20 张**（新增 `threadImages` 亮暗各一张）。
 
+### 8.8 顺带修掉「拿到一堆 UUID 文件名，只能肉眼认图」
+
+`xcrun xcresulttool export attachments` 导出的 png **是 UUID 文件名**，界面名只写在
+同目录的 `manifest.json` 里（对应测试里设的 `XCTAttachment.name`，形如 `light-home` /
+`dark-threadShareMenu`）。而 `codemagic.yaml` 的 artifacts 只收了 `*.png` —— 于是每次验收
+都得把 20 张图逐张点开猜是哪一屏。两处小修：
+
+1. artifacts 补 `screenshots/*.json`（manifest 一起下载，名字↔文件一目了然）；
+2. Collect 步骤把映射**直接打进 CI 日志**，连压缩包都不用下。
+
+⚠️ 写这段脚本时踩了个 YAML 坑：`script: |` 的块标量里**不允许出现列 0 的行**，
+所以不能用 `python3 - <<'PY' … PY` 这种 heredoc（heredoc 内容必须顶格，而顶格会终止块标量；
+缩进又会让 Python 顶层语句报 `IndentationError`）。改为 `python3 -c "…"` 单行，
+并在本地用假 manifest 试过正常映射与「字段名变了」的兜底分支。
+
