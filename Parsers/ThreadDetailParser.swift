@@ -65,8 +65,10 @@ struct ThreadDetailParser {
         }
         guard !posts.isEmpty else { return nil }
 
-        Log.parser.info("ThreadDetailParser(PC): \(posts.count, privacy: .public) 楼" +
-                        "（含屏蔽楼 \(posts.filter { $0.isBlocked }.count)）")
+        // ⚠️ os.Logger 的插值在编译期被转成 `OSLogMessage`，**不支持 `+` 拼接**，
+        // 所以先把要打印的量算成本地常量，再一次性写进一条消息里。
+        let blockedCount = posts.filter(\.isBlocked).count
+        Log.parser.info("ThreadDetailParser(PC): \(posts.count, privacy: .public) 楼，含屏蔽楼 \(blockedCount)")
         let pageInfo = PaginationParser.parse(document: document)
             ?? PageInfo(currentPage: 1, totalPages: 1, previousPageURL: nil, nextPageURL: nil)
         return ThreadPage(title: title, typeName: typeName, posts: posts, pageInfo: pageInfo)
@@ -109,14 +111,14 @@ struct ThreadDetailParser {
         }
 
         // pid：优先楼层号锚点，其次正文格 id
-        var realPID = pid(fromPostNumID: (try? anchor.id()) ?? "")
+        var realPID = pid(fromPostNumID: anchor.id())
 
         // 正文
         var htmlContent = ""
         var isBlocked = false
         if let container,
            let msg = (try? container.select("td.t_msgfont[id^=postmessage_]").first()) ?? nil {
-            if realPID == nil { realPID = pid(fromPostMessageID: (try? msg.id()) ?? "") }
+            if realPID == nil { realPID = pid(fromPostMessageID: msg.id()) }
             htmlContent = (try? msg.html()) ?? ""
 
             // PC 模板把附件图放在与正文同级的 `div.postattachlist` 里（**不在** `td.t_msgfont` 内），
@@ -216,7 +218,7 @@ struct ThreadDetailParser {
         var htmlContent = ""
         var isBlocked = false
         if let con = try? block.select("div.detailcon").first() {
-            realPID = Self.pid(fromID: (try? con.id()) ?? "")
+            realPID = Self.pid(fromID: con.id())
             htmlContent = (try? con.html()) ?? ""
         }
         if htmlContent.isEmpty {
@@ -240,7 +242,7 @@ struct ThreadDetailParser {
     }
 
     private static func parseWAPReply(_ li: Element) -> Post {
-        let realPID = Self.pid(fromID: (try? li.id()) ?? "")
+        let realPID = Self.pid(fromID: li.id())
 
         let top = (try? li.select("div.replytop").first()) ?? nil
         let fullTopText = (try? top?.text()) ?? ""
@@ -258,7 +260,7 @@ struct ThreadDetailParser {
             floor = Int(f)
         }
 
-        var createdAtRaw = fullTopText.capturedGroup(
+        let createdAtRaw = fullTopText.capturedGroup(
             1, pattern: #"/\s*(\d{4}-\d{1,2}-\d{1,2}(?:\s+\d{1,2}:\d{2})?)"#) ?? ""
 
         let con = (try? li.select("div.replycon").first()) ?? nil

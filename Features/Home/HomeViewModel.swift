@@ -151,7 +151,7 @@ final class HomeViewModel: ObservableObject {
             let infos = await ImageMetadataRepository.detectAll(limited)
             guard !infos.isEmpty else { return }
             guard let self else { return }
-            await self.apply(infos)
+            self.apply(infos)
         }
     }
 

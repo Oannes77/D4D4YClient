@@ -61,7 +61,7 @@ struct SearchResultParser {
 
             var authorName = "匿名"
             var authorID: Int?
-            if let parent = try? link.parent(),
+            if let parent = link.parent(),
                let userLink = try? parent.select("a[href*=space.php?uid=]").first(),
                let name = try? userLink.text(), !name.isEmpty {
                 authorName = name

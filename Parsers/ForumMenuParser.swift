@@ -48,7 +48,7 @@ enum ForumMenuParser {
 
                 // 子版块：WAP 用 <li class="sub">；PC 常在 <ul class="child"> 内 —— 父链上任一环节带 sub/child 即判定
                 let isSub = Self.looksLikeSubForum(link)
-                sections.append(ForumSection(id: fid, name: name, looksLikeSubForum: isSub))
+                sections.append(ForumSection(id: fid, name: name, isSubForum: isSub))
             }
         }
         Log.parser.info("ForumMenuParser: 解析到 \(sections.count) 个版块")
@@ -56,14 +56,15 @@ enum ForumMenuParser {
     }
 
     /// 沿父链向上若干层看类名是否含 sub / child。
+    /// 注：SwiftSoup 的 `parent()` / `tagName()` 均不抛错（只有 `select` / `attr` / `text` 等抛），故不加 `try?`。
     private static func looksLikeSubForum(_ link: Element) -> Bool {
-        var node: Element? = try? link.parent()
+        var node: Element? = link.parent()
         var depth = 0
         while let current = node, depth < 3 {
             let cls = ((try? current.attr("class")) ?? "").lowercased()
             let tag = current.tagName().lowercased()
             if cls.contains("sub") || cls.contains("child") || tag == "dd" { return true }
-            node = try? current.parent()
+            node = current.parent()
             depth += 1
         }
         return false

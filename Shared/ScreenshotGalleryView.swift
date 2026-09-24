@@ -31,8 +31,8 @@ struct ScreenshotGalleryView: View {
         .preferredColorScheme(DemoMode.isDark ? .dark : nil)
         .environmentObject(SessionManager.shared)
         .task {
-            await DemoData.seed(context: context)
-            await SessionManager.shared.enterDemoSession()
+            DemoData.seed(context: context)
+            SessionManager.shared.enterDemoSession()
         }
     }
 }

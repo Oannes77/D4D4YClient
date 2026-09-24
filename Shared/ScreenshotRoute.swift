@@ -70,8 +70,8 @@ struct ScreenshotRouteView: View {
             .preferredColorScheme(DemoMode.isDark ? .dark : nil)
             .environmentObject(SessionManager.shared)
             .task {
-                await DemoData.seed(context: context)
-                await SessionManager.shared.enterDemoSession()
+                DemoData.seed(context: context)
+                SessionManager.shared.enterDemoSession()
                 // Sheet 类界面：等首屏渲染完成后再弹，避免与入场动画冲突。
                 if screen == .reply || screen == .userCard {
                     try? await Task.sleep(nanoseconds: 700_000_000)

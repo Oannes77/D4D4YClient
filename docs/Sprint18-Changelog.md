@@ -161,3 +161,52 @@
 
 **有现成第三方实现时必须先找来读。** `webrules/4d4y` 一直在，用户也提过，
 它能一次回答「UA 怎么选 / 选择器是什么 / 上传协议是什么」——我却摸黑试错了十几轮。
+
+---
+
+## 七、补修：首次 CI 编译失败，以及静态检查的补强
+
+Sprint 18 推上去后，**截图流水线第一轮就跑挂了**（`0` 张 png）——
+「本地自检通过」不等于能编译。两个错都不是括号问题：
+
+| # | 位置 | 错误 | 怎么来的 |
+|---|------|------|----------|
+| 1 | `Parsers/ForumMenuParser.swift:51` | `incorrect argument label … have 'looksLikeSubForum:', expected 'isSubForum:'` | 把 helper 改名成 `looksLikeSubForum` 时，**顺手把调用点的标签也改了** —— 但 `ForumSection` 的属性仍叫 `isSubForum` |
+| 2 | `Parsers/ThreadDetailParser.swift:68` | `binary operator '+' cannot be applied to operands of type 'OSLogMessage' and 'String'` | `os.Logger` 的插值会被转成 `OSLogMessage`，**它没有 `+` 运算符**，不能像普通字符串那样跨行拼接 |
+
+顺带清掉了编译日志里的全部可修警告（都是本轮重写的文件带出来的）：
+`try?` 套在不抛错的调用上（`parent()` / `tagName()` / `id()`）、多余的 `await`
+（`seedMedia` / `enterDemoSession` / `apply` 都不是 async）、`var` 该是 `let`。
+
+### 新增工具：`analysis/swiftlint-lite.mjs`
+
+之所以会漏，是因为本地唯一的自检 `analysis/swiftcheck.mjs` **只查括号平衡** ——
+而上面两个错恰恰是「括号完全平衡、但类型/标签不合法」。
+在没有 Xcode 的 Windows 上，用「仓库内自洽的静态推断」把这三类补上：
+
+| 规则 | 级别 | 做法 |
+|------|------|------|
+| `memberwise-label` | **硬错误** | 扫出所有 `struct`（无自定义 init）的属性名集合，再去扫全部 `X(...)` 调用点；**标签不在集合里就报错** —— 专治上面第 1 类 |
+| `oslog-concat` | **硬错误** | `Log.xxx.info/warning/…(...)` 参数顶层出现 `+` 即报错 —— 专治上面第 2 类 |
+| `memberwise-missing` | 警告 | 必填参数没给（自动放过 `@State`/`@EnvironmentObject` 这类 SwiftUI 注入的属性、以及尾随闭包） |
+| `soupsoup-redundant-try` | 警告 | `try? x.parent()` 这类冗余（注意 `try? a.parent()?.text()` 里的 `try?` 是给 `text()` 用的，不能误判） |
+
+```bash
+node analysis/swiftlint-lite.mjs D4D4YClient        # 硬错误才算失败
+node analysis/swiftlint-lite.mjs D4D4YClient --warn # 连警告一起算失败
+node analysis/swiftcheck.mjs D4D4YClient            # 括号平衡（已有的）
+```
+
+自查过它「真的能抓到」：故意写回错误样例，两类硬错误都能命中；
+同时确认不误报 SwiftUI 的 `@State`/`@EnvironmentObject` 属性。
+
+### 教训（补充到本文档上面那条）
+
+**「自检通过」必须说清自检查了什么。** 只查括号平衡就敢说「静态检查 0 问题」，
+等于把编译器的活儿揽了一半还报了个通过 —— 下一轮起，两个脚本都要跑，缺一不可。
+
+**验证要覆盖所有 test target。** 截图 workflow 只编 App target，
+单测 target（7 条新断言）根本没被编到 —— 所以本轮又用 cheerio 把单测断言
+（列表 75 行 / 详情 50 楼 / 浏览量 673371 / 作者 EC uid=1142 / 分类 心得技巧 / 附件图 / sid 剥离）
+逐条对着真实 PC 夹具复验了一遍，确认不是「写了个编不过或必挂的测试」。
+

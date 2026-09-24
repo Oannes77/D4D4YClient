@@ -20,7 +20,9 @@ struct ForumThread: Identifiable, Hashable {
     let createdAt: Date?         // 发帖日期（该模板只有年月日）
     let createdAtRaw: String
     let replies: Int?            // 回复数
-    let views: Int?              // 查看数：当前 wap 模板不输出，恒为 nil
+    // 查看数：**只有 PC 模板有**（`td.nums > em`，Sprint 18 起全局走 PC 才拿到值）。
+    // WAP 模板不输出，所以在 WAP 兜底解析路径下这里会是 nil —— 界面按 nil 隐藏即可。
+    let views: Int?
     let lastReplyUserName: String?
     let lastReplyAtRaw: String?  // 最后回复时间
 }
