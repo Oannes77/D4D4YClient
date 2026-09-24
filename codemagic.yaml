@@ -56,8 +56,10 @@ workflows:
 
   # ----------------------------------------------------------------------------
   #  Phase 1.5 —— 真实 UI 截图（演示模式，无需密钥）
-  #  启动参数 -DemoMode 触发 ScreenshotGalleryView + 离线夹具数据；
-  #  UI 测试逐 Tab 截 5 个界面，亮/暗各一套，写入 $TMPDIR/screenshots 后收集为 artifact。
+  #  启动参数 -DemoMode + -DemoScreen=<界面名> 让 App 直接渲染目标界面
+  #  （路由见 Shared/ScreenshotRoute.swift），UI 测试只负责启动 + 等锚点 + 截图。
+  #  清单见 D4D4YClientScreenshots/AppScreenshotTests.swift 的 `targets`
+  #  （当前 10 个界面 × 亮/暗 = 20 张）；SCREENSHOT_FULL=1 可全量回归。
   #  入口：在 Codemagic 选择 "Screenshots" workflow 手动触发。
   # ----------------------------------------------------------------------------
   screenshots:
@@ -111,6 +113,16 @@ workflows:
           xcrun xcresulttool export attachments \
             --path "$CM_BUILD_DIR/test.xcresult" \
             --output-path "$CM_BUILD_DIR/screenshots"
+          # 给这批产物写上「出身证明」，随 artifact 一起打包。
+          # 起因：2026-09-24 收到一个 2026-09-17 的旧构建产物（build #8），
+          # 当时只能靠解压后的文件时间戳 + 逐张肉眼认界面才认出是七天前的版本 ——
+          # 一整轮返工。有了 runinfo.txt，解压一眼就能对上是哪个提交。
+          echo "commit=${CM_COMMIT:-unknown}"      >  "$CM_BUILD_DIR/screenshots/runinfo.txt"
+          echo "branch=${CM_BRANCH:-unknown}"      >> "$CM_BUILD_DIR/screenshots/runinfo.txt"
+          echo "build=${PROJECT_BUILD_NUMBER:-?}"  >> "$CM_BUILD_DIR/screenshots/runinfo.txt"
+          echo "workflow=screenshots"              >> "$CM_BUILD_DIR/screenshots/runinfo.txt"
+          echo "--- 本次产物出身 ---"
+          cat "$CM_BUILD_DIR/screenshots/runinfo.txt"
           echo "--- 导出文件清单 (Collect step) ---"
           find "$CM_BUILD_DIR/screenshots" -type f | head -50
           PNG_COUNT=$(find "$CM_BUILD_DIR/screenshots" -name '*.png' | wc -l | tr -d ' ')
@@ -120,9 +132,11 @@ workflows:
           echo "--- 截图映射（附件名 -> UUID 文件名）---"
           # ⚠️ 只能用 python3 -c 单行：YAML 的 `|` 块标量里不允许出现列 0 的行，
           #    用 <<'PY' heredoc 会把 YAML 写坏（内容必须以块缩进开头，而 Python 顶层不能有缩进）。
+          # ⚠️ manifest 顶层是**数组**（每个测试方法一个元素，各自带 attachments）。
+          #    只读 m['attachments'] 会拿到 None，整份映射退化成一堆 "None -> None"。
           M="$CM_BUILD_DIR/screenshots/manifest.json"
           if [ -f "$M" ]; then
-            python3 -c "import json;m=json.load(open('$M',encoding='utf-8'));r=(m.get('attachments') if isinstance(m,dict) else m) or [];print('\n'.join('   %s  ->  %s'%((a.get('suggestedHumanReadableName') or a.get('name')),(a.get('exportedFileName') or a.get('file'))) for a in r) or ('   （manifest 未含名字字段，原始内容如下）\n'+json.dumps(m,ensure_ascii=False)[:800]))"
+            python3 -c "import json;m=json.load(open('$M',encoding='utf-8'));L=m if isinstance(m,list) else [m];r=[x for e in L for x in (e.get('attachments') or [])];print('\n'.join('   %s  ->  %s'%((a.get('suggestedHumanReadableName') or a.get('name') or '?').split('_0_')[0],(a.get('exportedFileName') or a.get('file') or '?')) for a in r) or ('   （未解析出映射，manifest 原始内容前 800 字）\n'+json.dumps(m,ensure_ascii=False)[:800]))"
           else
             echo "   （没有 manifest.json：导出格式可能变了，检查 xcresulttool 输出）"
           fi
@@ -149,6 +163,8 @@ workflows:
       # 形如 `light-home` / `dark-threadShareMenu`）。不收集它，拿到 40 多张图只能靠肉眼逐张认。
       - screenshots/*.json
       - screenshots/**/*.json
+      # runinfo.txt：本批产物对应的 commit / 分支 / 构建号，用于判断「这是不是最新一版」。
+      - screenshots/*.txt
 
     # ==========================================================================
     #  Phase 2 —— 仅当上面 BUILD SUCCEEDED 后取消注释启用。
