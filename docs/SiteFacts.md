@@ -31,13 +31,69 @@
 | `favorites`（收藏入口） | **0** | 1（`favoritewin` 弹层，活的） |
 | `my.php` 链接 | **0** | 有 |
 
-**推论**：WAP 模板是「能读」的最低配 —— 正文可读，但**附件（含以附件形式发布的图片）在 WAP 视图里根本不出现**。
-若某天要做「附件/图片完整浏览」，必须先解决模板选择问题（改 UA 或找参数），届时是**整轮重构级**的工作量。
+**推论**：WAP 模板是「能读」的最低配 —— 正文可读，但**附件（含以附件形式发布的图片）在 WAP 视图里不出现**。
+
+### ⚠️ 但「不出现」的原因是懒加载空转，不是没有数据（2026-09-24 查明）
+
+WAP 帖子页尾部确实为每个楼层输出了附件加载调用：
+
+```html
+<script type="text/javascript" reload="1">
+  aimgcount[1456951] = [136655];
+  attachimgshow(1456951);
+</script>
+```
+
+`attachimgshow(pid)`（定义在 `templates/wap/js/app.js`）做的是：
+
+```js
+obj = $('#aimg_' + aimgs[i])[0];
+if(!obj) { aimgcomplete++; continue; }          // ← WAP 页永远走这一支
+if(!obj.status) { obj.status = 1; obj.src = obj.getAttribute('file'); }
+```
+
+而 **WAP 页里 `id="aimg_"` 与 `file=` 的出现次数都是 0**（实测 tid=156304：
+`attachimg` 30 次、`<img>` 16 个、`aimg_` **0** 个）—— 它要找的元素根本不存在，**纯空转**。
+真实地址只在 PC 模板里：
+
+```html
+<img src="https://img02.4d4y.com/forum/images/common/none.gif"
+     file="https://img02.4d4y.com/forum/attachments/day_040117/xxx.jpg"
+     thumbImg="1" id="aimg_136655">
+```
+
+**关键**：该 `file` 地址**游客可直接下载**（实测 200 `image/png` / `image/jpeg`，
+不需登录、不需 Referer、无需 Cookie）。所以附件图**不是拿不到，只是地址只在 PC 模板里**。
+
+### 首图可用率实测（20 个主题，analysis/imgrate.mjs）
+
+| 口径 | 结果 |
+|---|---|
+| 现状（元数据走 WAP）能解析出首图 | **4 / 20 = 20%**（都是较新、以 `<img>` 内嵌贴图的主题） |
+| 改用桌面 UA 抓元数据后可解析出首图 | **10 / 20 = 50%** |
+| 其中首图真的能下载（未被服务器清理） | **8 / 20 = 40%** |
+
+⇒ 正确的说法是「**覆盖面不足**」，而不是「图片几乎不存在」。此前据单个帖子下的
+「WAP 正文配图极少」属**过度概括**，已更正。
+
+### 老附件会被服务器清理（站点数据现状，任何方案都取不回）
+
+实测 tid=156304（2004 年附件，`day_040117` 等）30 个地址全部 **404**；
+而 tid=332225（2006 年 `day_061102`）游客可正常取到。⇒ 年代久远的附件已被站方清除，
+客户端**如实不显示**即可，不必也无法补救。
 
 ### 实测：无法用参数切换
 - `viewthread.php?tid=193033&mobile=no` → 仍是 WAP（125,591 字节）
 - 形态不正确的 `?mobile=no` 直接 404
-⇒ 目前**只发现 UA 一个开关**。
+⇒ 模板切换**只有 UA 一个开关**，且**只应逐请求使用**（见下）。
+
+### 取用方式（已落地）
+
+**不要改全局 UA** —— 全部解析器与 `Tests/Fixtures` 都建立在 WAP 模板之上。
+正确做法是**逐请求覆盖**：`HTTPClient.request(path:headers:)` 传入 `HTTPClient.desktopHeaders`。
+目前全站只有一处这么用：`ImageMetadataRepository.detect`（只为拿附件图地址）。
+连带必修：`ThreadImageParser.parsePreviewText` 必须同时认 PC 容器
+（`td.t_msgfont` / `[id^=postmessage_]`），否则元数据改走 PC 后首页首帖摘要会变空。
 
 ---
 
@@ -126,6 +182,7 @@ node analysis/decode.mjs _probe/pm_wap.html             # GBK 页面解码 + 打
 | 功能 | 现状 | 是否受模板影响 |
 |---|---|---|
 | 读帖正文 / 楼层 / 回复 / 发帖 / 收藏 / 好友 / 私信 | 已实现 | 不受影响（WAP 有对应页面，客户端不依赖 PC 入口） |
+| **列表首图预览** | ✅ **已修（07ed852）** | 元数据检测逐请求改用 PC 模板拿附件图地址；实测可用率 20% → 40%（真实可下载） |
 | 附件上传 | 已实现，待真机验证 | ⚠️ WAP 发帖页的 file 域名未知（游客看不到发帖页）；不排除 WAP 版没有上传域 |
-| 浏览帖子内嵌图片 | 用 PC 模板才完整 | ⚠️ WAP 模板图片极少；以附件形式发布的图**看不到** |
+| **详情页内嵌图片** | 🔸 **待修** | 详情正文仍来自 WAP 楼层 HTML，附件型主题**点进去看不到图** → 与列表首图不一致。修法：详情侧补一次 PC 请求，并需决定呈现位置（正文内 / 顶部图片区） |
 | 「关注」 | 目前走 `.sectionMissing`（当作站点无此栏目） | 🔸 **需修正**：`my.php?item=attention` 真实存在，待接入 |
