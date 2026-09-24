@@ -213,3 +213,23 @@ node analysis/verifypc.mjs                              # 用 cheerio 镜像 Swi
 | **浏览量** | ✅ **新增（Sprint 18）** | PC 模板的 `td.nums > em` 输出浏览量（WAP 模板没有这个字段） |
 | 附件上传 | ✅ 已按 SWFUpload 两步协议实现 | ⚠️ **待真机验证**：`form#imgattachform` 的 `uid`/`hash` 与 `misc.php?action=swfupload` 端点需登录后才看得到；失败会明确报「附件上传失败（帖子未发出）」 |
 | 「关注」 | ✅ **已接入（Sprint 18）** | `my.php?item=attention`（参数 **tid**，关注的是**主题**）；「我的 → 关注」为主题型列表，详情页操作栏有铃铛 |
+
+---
+
+## 七、板块 fid 对照表（Demo 夹具 / 默认置顶用）
+
+| fid | 板块 | 游客可见 | 备注 |
+|---|---|---|---|
+| 2 | Discovery | 🚫 登录门 | **默认置顶板块**（`PinnedForum` 默认值） |
+| 6 | Buy & Sell | 🚫 登录门 | |
+| 7 | Geek Talks | ✅ | |
+| 9 | Smartphone | ✅ | |
+| 12 | PalmOS | ✅ | |
+| 14 | （实测抓样本用） | ✅ | 夹具 `forumdisplay_fid14_page1*.html` 来自这里，共 919 页 |
+| 22 | 麦客爱苹果 | ✅ | |
+| 50 | DC/NB/MP3 | ✅ | |
+| 56 | iPhone/iPad | ✅ | |
+| 60 | Android | ✅ | |
+
+⚠️ 「游客可见」一栏只保证**页面可达**；具体版块是否可见以线上为准（Sprint 18 实测 fid=14 游客可读）。
+`fid=2`（Discovery）与 `fid=6`（Buy & Sell）是**登录门**，这是立项时就定下的产品前提。

@@ -33,6 +33,33 @@
   发帖上传 / 关注入口由此全部变成真实的。**本文档里所有基于 WAP 模板的判断都要按此重读**，
   凡是写成「站点没有 / 受模板限制做不到」的，先回去查是不是只看到了一半页面。
 
+### UI 硬约定（改界面时不可违反）
+
+| 约定 | 说明 |
+|---|---|
+| 风格 | Threads 极简风：浅底 + 圆角卡片 + 0.5px 细线 + **扁平无阴影** |
+| 色板 | 主色紫 **#534AB7**；深色模式**纯黑 #000** 底 + 紫提亮 **#8F86E8** |
+| 卡片 | 一律用 `View.appCard(scheme)` —— 浅色下 background 与 surface 同为 `#FFFFFF`，**不加描边看不见** |
+| 输入框 | **必须有可见边界**：`appSurfaceSecondary` 填充 + `appBorder` 0.5pt 描边（范本：`ReplyEditor`）。List 里裸 `TextField` 在浅色下会被当成静态文字 |
+| 一级导航 | 固定 3 Tab（首页 / 消息 / 我的）；详情 · 回复框 · 用户卡 · 画廊走 push 或模态，不占 Tab |
+| 首页板块条 | **点胶囊 = 进该板块并刷新；在胶囊条上左右滑 = 换板块**（阈值 60pt 且 > 纵向 1.5 倍；选中胶囊自动居中；到头停住不循环） |
+| 详情 | 首帖置顶 + 楼层流 + **每页 50 楼 + 页尾分页条**；「眼睛」= 只看该作者（互斥）；长按楼层 = 引用 |
+| 回复 / 发帖占位符 | 显示在**输入框外**的斜体小字（不进输入框），提交时与正文**隔一空行**附带；发帖标题留空则自动取正文首行 |
+| 操作栏 | 六个真动作：回复 / 分享（菜单：系统分享 + 分享给好友）/ 收藏 / 关注 / 举报 / 网页版。**不做点赞**（论坛无原生赞） |
+| 用户卡 | 头像 + 名 + 签名 + 信息框 + 加好友/删好友 + 私信 + 搜贴 + 拉黑（本地）；无 @handle |
+| 时间 | 客户端自产时间用 `Shared/RelativeDateText`（今天 09:02 / 昨天 21:04 / 9月18日）；论坛给的 `timeRaw` **原样显示** |
+| 列表密度 | 8 / 12 / 18，在 `PostRow` / `PostCell` / `ThreadListView` **同一口径** |
+
+### 工程约定
+
+- **纯客户端开关一律放 `Shared/PreferenceStore.swift`**（UserDefaults + ObservableObject 单例：
+  `replyPlaceholder` / `showPostContent` / `pushFrequencyMinutes` / `lastPushCheckAt` / `reportAdminUID`），
+  **不要再往 SwiftData 加字段** —— 启动早期与后台任务都要读它，且能免迁移。
+- 举报收件人已定为 **UID 29 / 4D4Y**，作为 `PreferenceStore` 的内置默认值；
+  未登录时只复制链接并提示先登录，**不发私信、不假装发出**。
+- `SavedThread` **已弃用**（收藏改服务器），模型定义保留仅为稳定 SwiftData schema，**别删字段**。
+- `project.yml` 的 `sources` 是**目录**：新增 Swift 文件免登记；新增测试夹具放进 `Tests/Fixtures/` 即自动成为资源。
+
 ### 论坛侧能力查证结论（Sprint 12 —— ⚠️ 已被 Sprint 16/18 推翻，见文末）
 
 真实 `viewthread.php` 页面里，「收藏 / 分享」入口被模板**整块注释**：
@@ -109,8 +136,48 @@ threadShareMenu / userCard / newPost / savedThreads / replyPlaceholder / reportC
 
 ## 三、验收方式
 
-1. Codemagic 手动触发 `Screenshots`（单次跑完，产出 10 张）。
+1. Codemagic **手动触发** `Screenshots` workflow（默认只跑 `targets`，Sprint 18 为 18 张。
+   `SCREENSHOT_FULL=1` 时连 `confirmedTargets` 一起跑，22 界面 = 44 张）。
 2. 用户一次性浏览，圈出不满意的界面。
 3. 我按圈出的界面集中改一轮 → 再跑一次 → 收敛。
 
 不再需要逐张来回跑。已确认的界面移入 `confirmedTargets`，默认不再重复截图。
+
+### 机制（新增界面只改三处）
+
+`Shared/ScreenshotRoute.swift`：枚举加 case + `content` 加分支 + `targets` 加一行。
+启动参数 `-DemoScreen=<name>` 直渲目标界面（Tab 类带真 TabBar、push 类包 NavigationStack、
+Sheet 类延迟 0.7s 自动弹）。`AppScreenshotTests` 会 `waitForAnchor`（**同时轮询按钮与静态文本**，12s 预算）
+后再截图，不用 XCUI 逐级点击。
+
+`Target` 的可选能力：
+
+| 参数 | 用途 |
+|---|---|
+| `scrollToElement` | 按 accessibilityIdentifier 把元素滚进可视区（**用 `isHittable` 判定**，比固定滑动次数可靠） |
+| `tapElement` + `tapWaitText` | 点开 Menu 并等选项出现（用于分享菜单） |
+| `name` | 同一界面拍多张时区分文件名 |
+
+### 🔴 三条铁律（都踩过）
+
+1. **锚点必须选在验收点本身或其附近。** 只等一个「页面顶部就有」的元素，会出现
+   「等到了 = 假通过，验收点在首屏之外根本没拍到」（Sprint 16：`thread` 锚在导航栏，
+   操作栏在长首帖下方，两轮截图都没拍到）。
+   **定锚点前先问：验收点会不会落在首屏之外？** 会就配 `scrollToElement`。
+2. **Demo 夹具的顺序会影响能否验收。** 首屏只放得下约 1.5 张卡片（第 1 张带大图时更少），
+   被测功能所在的那条要排到**第 2 位以内**（Sprint 16：被拉黑作者原本第 3 条，占位看不到）。
+3. **ScrollView 锚点必须挂在页尾最后一个元素之后。** 挂在分页条之前会把分页条整个推出屏幕。
+
+### 核对截图
+
+可用脚本判明暗 / 内容量（左边缘采样亮度 >110 = 亮色；非背景像素占比过低 = 疑似空屏），
+**别只靠肉眼看缩略图**（Sprint 16 曾把浅色图误判成深色）。**截图夹具不要依赖外网图源**。
+
+### 0 张 / 黑屏的排查
+
+- 0 张 = 编译失败被 `|| true` 吞掉（Collect 步骤会打印 `error:` 摘要）；
+  手写 Info.plist 后缺 `CFBundleIdentifier` 时**编译成功但装不上**，同样是 0 张。
+- 黑屏 = 截在启动过渡上，靠等元素出现根治。
+- **例外**：Collect 打印「The test runner encountered an error」且 error 摘要为**空** =
+  runner / 模拟器偶发故障（编译没失败）→ 重跑，或 boot 前 `simctl shutdown all + erase`
+  （已写进 `codemagic.yaml` 的 Boot simulator 步骤）。
