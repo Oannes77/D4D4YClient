@@ -67,6 +67,12 @@ final class AppScreenshotTests: XCTestCase {
         //    settle 给足 2.5s：5 张远程图要真的下载完，否则拍到的是加载占位。
         Target(screen: "threadImages", waitElement: "detail-reply",   settle: 2.5,
                scrollToElement: "post-share"),
+        // ②d 附件区：**必须单独拍**。实测这些帖的文件型附件都在靠后的楼层
+        //    （439576 → 第 3 / 9 楼，193033 → 第 11 / 13 楼），
+        //    滚到「操作栏」只会拍到首帖，附件区根本不在画面里。
+        //    这里改成滚到附件行本身（`post-attachment`）再拍。
+        Target(screen: "threadImages", waitElement: "detail-reply",   settle: 2.0,
+               scrollToElement: "post-attachment", name: "threadAttachments"),
         // ③ 用户卡：加好友 / 搜贴 / 拉黑 三键真实化（不再是空按钮）
         Target(screen: "userCard",     waitElement: "加好友",          settle: 1.2),
         // ④ 发帖页：图片 / 附件选择与预览条
@@ -188,7 +194,11 @@ final class AppScreenshotTests: XCTestCase {
     ///
     /// 用 **`isHittable`（真的露出来且能点）** 作为判据，而不是固定滑动次数：
     /// 首帖正文长短不一，固定次数要么滑不够（还是拍不到），要么滑过头（把操作栏顶出屏幕）。
-    private func scrollIntoView(_ app: XCUIApplication, _ identifier: String, maxSwipes: Int = 6) {
+    /// 需要滚进可视区后重新判定的注释见 `scrollIntoView`：上限从 6 提到 15。
+    /// 原因（2026-09-24 Sprint 20）：详情页改成「图片一张一行」后，首帖本身就有一屏多高；
+    /// 6 次滑动常常够不到首帖下方的操作栏（浅色那两张干脆停在图片顶上没动），
+    /// 于是「等到了但没拍到」——正是截断验收点的老毛病。上限提高不影响正常情况（命中即停）。
+    private func scrollIntoView(_ app: XCUIApplication, _ identifier: String, maxSwipes: Int = 15) {
         for _ in 0..<maxSwipes {
             let el = element(app, identifier)
             if el.exists && el.isHittable { return }

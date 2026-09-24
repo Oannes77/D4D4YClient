@@ -123,6 +123,7 @@
 | 2 | `thread` | 帖子详情（首帖 + 六键操作栏，含新增的「关注主题」铃铛） | detail-reply（滚到 post-share） | 全量 |
 | 2b | `thread`（`threadShareMenu`） | 点开分享菜单：系统分享 / 分享给好友 | detail-reply → 点 post-share | 全量 |
 | 2c | `threadImages` | 🆕 带 5 张附件图的主题（证明**详情页真的能看到图**） | detail-reply（滚到 post-share） | ✅ |
+| 2d | `threadImages`（`threadAttachments`） | 🆕 **附件区**（文件型附件：文件名 / 体积 / 下载次数 / 分享）。ⓘ 附件都在靠后楼层（439576 第 3·9 楼、193033 第 11·13 楼），**必须滚到附件行本身**（`post-attachment`）才拍得到 | detail-reply → 滚到 post-attachment | ✅ |
 | 3 | `threadReplies` | 帖子回复楼层（滚页尾：50 楼 + 分页条） | detail-page-prev | 全量 |
 | 4 | `reply` | 回复框 Sheet | 取消 | 全量 |
 | 5 | `userCard` | 用户卡片 Sheet | 加好友 | 全量 |
@@ -144,9 +145,9 @@
 | 21 | `security` | 账号与安全 | 退出登录 | 全量 |
 | 22 | `login` | 登录页 | 登录 | 全量 |
 
-默认只跑**待验收**的 `AppScreenshotTests.targets`（Sprint 18.1 为 10 个界面 = 20 张：home / thread /
-threadShareMenu / threadImages / userCard / newPost / savedThreads / replyPlaceholder / reportChat /
-myFollows）；需要全量回归时在 Codemagic 设 `SCREENSHOT_FULL=1`，跑满 23 个界面 = 46 张。
+默认只跑**待验收**的 `AppScreenshotTests.targets`（Sprint 20 为 **11 个界面 = 22 张**：home / thread /
+threadShareMenu / threadImages / **threadAttachments** / userCard / newPost / savedThreads /
+replyPlaceholder / reportChat / myFollows）；需要全量回归时在 Codemagic 设 `SCREENSHOT_FULL=1`，跑满 23 个界面 = 46 张。
 
 ## 三、验收方式
 

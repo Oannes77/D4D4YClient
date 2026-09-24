@@ -183,6 +183,9 @@ struct PostContent: View {
                 .padding(.horizontal, 10)
                 .background(Color.appSurfaceSecondary(scheme))
                 .cornerRadius(10)
+                // 截图锚点：附件可能在很靠后的楼层（实测 439576 在第 3 / 9 楼、193033 在第 11 / 13 楼），
+                // 没有标识符就没法让截图脚本「滚到附件那一行再拍」。
+                .accessibilityIdentifier("post-attachment")
             }
         }
     }
