@@ -4,14 +4,18 @@ import SwiftUI
 ///
 /// 头部：头像 + 作者名 + 「眼睛」(只看该作者) + 时间 + 楼层。
 /// 正文：复用 `PostContent`（正文 + 本楼层图片缩略图，点击进全屏画廊）。
-/// 操作栏：回复 / 分享 / 收藏 / 关注 / 举报 / 网页版 —— 每一个都做**真实的事**，没有假按钮：
+/// 操作栏：回复 / 分享 / 收藏 / 关注 / 举报 —— 每一个都做**真实的事**，没有假按钮：
 /// - 回复：弹回复 Sheet；
 /// - 分享：菜单二选一 —— 系统分享，或**站内分享给好友**（读好友列表 → 发私信配链接）；
 /// - 收藏：论坛服务器收藏（`my.php?item=favorites&type=thread`），需要登录，结果以回读确认为准；
 /// - 关注：**关注该主题的新回复**（站点原文 `my.php?item=attention&action=add&tid=<tid>`），
 ///   同样需要登录、同样以回读关注列表为准。⚠️「关注」关注的是**主题**（参数 tid），不是人；
-/// - 举报：论坛没有举报接口 → 复制该帖链接 + 私信管理员（未配置收件人时只复制并提示）；
-/// - 网页版：在浏览器打开该帖，论坛原生功能（评分等）在网页端完成。
+/// - 举报：论坛没有举报接口 → 复制该帖链接 + 私信管理员（未配置收件人时只复制并提示）。
+///
+/// ⚠️ 2026-09-24 起**取消第六项「网页版」**（`safari` 图标）：它当初存在的理由是
+/// 「站内评分等只在论坛网页端提供」，但复核后确认**该站点两套模板都没有评分功能**
+/// （见 `FeatureStatus.md` 模块 17），即它指向的能力并不存在 ⇒ 按「不留没用的入口」删掉。
+/// `threadURL` 仍保留 —— 系统分享与举报都要用它。
 ///
 /// - 长按整行 → 引用该楼（弹回复 Sheet，预填引用文本）。
 /// - 点作者头像 / 名 → 用户卡。
@@ -100,7 +104,7 @@ struct PostDetailRow: View {
     // MARK: - 操作栏（全图标）
 
     private var actionBar: some View {
-        // 六个图标（回复 / 分享 / 收藏 / 关注 / 举报 / 网页版），间距 18 才不会在窄屏上挤到换行。
+        // 五个图标（回复 / 分享 / 收藏 / 关注 / 举报），间距 18 才不会在窄屏上挤到换行。
         HStack(spacing: 18) {
             Button { onReply() } label: {
                 Image(systemName: "bubble.right")
@@ -153,15 +157,6 @@ struct PostDetailRow: View {
             }
             .foregroundStyle(Color.appTextSecondary(scheme))
             .accessibilityIdentifier("post-report")
-
-            // 网页版：站内评分 / 举报等只在论坛网页端提供，直接打开该帖
-            if let threadURL {
-                Link(destination: threadURL) {
-                    Image(systemName: "safari")
-                }
-                .foregroundStyle(Color.appTextSecondary(scheme))
-                .accessibilityIdentifier("post-web")
-            }
 
             Spacer()
         }
