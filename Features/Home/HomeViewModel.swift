@@ -17,6 +17,12 @@ final class HomeViewModel: ObservableObject {
         case loading
         case loaded
         case failed(String)
+        /// **服务器明确拒绝了这次访问**（游客登录门 / 权限不足）。
+        ///
+        /// 必须与 `.failed` 分开：这类页面确实没有主题行，但说成「解析失败」或
+        /// 「该筛选下暂无主题」都是在撒谎 —— 界面照站点原文显示 + 给登录出口。
+        /// 4D4Y 游客权限极低（用户 2026-09-24 明确口径），这是常态而非异常。
+        case notice(SiteNotice)
     }
 
     // MARK: - 对外状态

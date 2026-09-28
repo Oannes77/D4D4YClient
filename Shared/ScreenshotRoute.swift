@@ -7,6 +7,7 @@ import SwiftData
 /// 脚本不再需要 XCUI 逐级点击（点击路径易受动画/时序影响，是此前截图缺失的主因）。
 enum ScreenshotScreen: String, CaseIterable {
     case home                // 首页（板块主题流）
+    case boardLoginGate      // 首页：站点登录门提示（游客被挡时的原文 + 登录出口，由 DemoOverrides 注入）
     case thread              // 帖子详情（首帖 + 回复楼层 + 分页条）
     case threadImages        // 帖子详情：带 5 张附件图的主题（验证「详情页能看到图」）
     case threadReplies       // 帖子回复楼层（滚到页尾：回复流 + 分页条）

@@ -22,6 +22,10 @@ struct HomeView: View {
     @Query(sort: \PinnedForum.sortOrder) private var pinned: [PinnedForum]
     /// 收藏状态（论坛服务器真源 `my.php?item=favorites`，登录后可用）：列表行星标与详情页共用同一份数据。
     @ObservedObject private var favorites = FavoritesStore.shared
+    /// 会话（登录态）：首页对「游客」有两处反应 —— 落地板块与胶囊锁标记，都要随登录/登出即时刷新。
+    @ObservedObject private var session = SessionManager.shared
+    /// 截图路由注入的一次性状态覆盖（仅演示模式，正式运行恒为 nil）。
+    @ObservedObject private var demoOverrides = DemoOverrides.shared
     /// 本地已拉黑作者（纯客户端行为，与论坛侧处罚无关）。
     @Query private var blockedUsers: [BlockedUser]
     @StateObject private var viewModel = HomeViewModel()
@@ -62,6 +66,35 @@ struct HomeView: View {
     /// 当前筛选条：线上取页面解析结果；演示模式取离线夹具里同一条（同一个解析器）。
     private var activeFilterBar: BoardFilterBar? {
         DemoMode.isOn ? (demoFilterBar ?? viewModel.filterBar) : viewModel.filterBar
+    }
+
+    // MARK: - 游客判定与演示注入
+
+    /// 当前是否是游客（未登录）。
+    ///
+    /// 用途只有两处，都不做「本地黑名单」的假动作：
+    /// ① 首次进入时**别把游客丢到一个打不开的版块**（4D4Y 游客权限极低，见 `ForumBoards`）；
+    /// ② 决定胶囊条上给哪些版块挂锁（仅提示，点进去仍由服务器裁决）。
+    ///
+    /// 演示/截图模式视为已登录：`bootstrap()` 在演示分支就已 return，`ScreenshotRouteView`
+    /// 也会 `enterDemoSession()`；不这样写的话，首页截图会凭空多出两把锁（而演示会话根本不是游客）。
+    private var isGuest: Bool {
+        !(session.state.isAuthenticated || DemoMode.isOn)
+    }
+
+    /// 需要登录才能访问的版块 fid（游客身份下胶囊上挂一把小锁）。已登录时为空集。
+    private var lockedBoardIDs: Set<Int> {
+        isGuest ? ForumBoards.loginOnlyFIDs : []
+    }
+
+    /// 截图路由注入的站点提示（登录门）。
+    ///
+    /// 演示会话是「已登录」的、也不联网，「游客被挡」这个状态在演示里走不到，
+    /// 所以由 `ScreenshotRoute` 通过 `DemoOverrides` 注入；
+    /// 文案来自**真实夹具的解析结果**（`DemoData.loadLoginGateNotice()`），不是手写。
+    /// 正式运行恒为 nil，一切以 `viewModel.state` 为准。
+    private var demoNotice: SiteNotice? {
+        DemoMode.isOn ? demoOverrides.homeNotice : nil
     }
 
     var body: some View {
