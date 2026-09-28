@@ -123,3 +123,51 @@ driver 直接停止调度后续批次 —— `ScreenshotRoute.swift` 所在的�
    要么把这一步改成硬失败，要么固定用 `verifyNN.mjs` 复验期望值。
 3. Sprint 21–24 的「功能已完成」结论都缺少截图证据，建议在下一轮做一次**全量回归**
    （`SCREENSHOT_FULL=1`）补齐。
+
+## 六、后记（build #56）：半截提交还有第三处漏网
+
+> 2026-09-28 晚。上轮修复（`bda9994`）推上去后触发 Screenshots，build #56 **又挂了**：
+
+```
+708: …/ThreadDetailViewModel.swift:26:9: error: cannot find 'notice' in scope
+711: …/ThreadDetailViewModel.swift:63:9: error: cannot find 'notice' in scope
+714: …/ThreadDetailViewModel.swift:77:13: error: cannot find 'notice' in scope
+```
+
+### 6.1 根因：同一份半截提交，第三个文件
+
+`1dd9fd0`（Sprint 21）在 `ThreadDetailViewModel` 里写了 `notice = SiteNotice(alert:)`
+和 `notice = nil`（`fail(_:)` 里），但**从没声明 `notice` 属性**；`ThreadDetailView`
+也挂了 `showLogin` sheet 却从没触发。上一轮只修了 HomeView / HomeViewModel / ScreenshotRoute，
+**漏了这个文件**——它被分批编译挡在了 HomeView 之后，第 8 批报错后就没轮到。
+
+### 6.2 为什么上轮的检查器 [D] 没抓到
+
+上一轮 [D] 的判据是「一个名字只要在**整个仓库任何位置**出现过就不报」（宁可漏报不可误报）。
+而 `notice` 恰好是个**高频实例属性名**：MessageChatViewModel（`@Published`）、NewPostView（`@State`）、
+EditPostView（`@State`）、ShareToBuddySheet（`@State`）、HomeViewModel（`case notice`）……
+于是它进了全局集合，`ThreadDetailViewModel` 里的裸 `notice` 被判「已知」⇒ **漏报**。
+
+「全局集合」这个策略本身就是漏报温床：**实例属性、局部变量、枚举 case 名都不是跨文件可见的**，
+把它们塞进全局集合，等于主动放过「跨文件同名未声明」这类 bug。
+
+### 6.3 修复
+
+| 项 | 内容 |
+|---|---|
+| 代码 | `ThreadDetailViewModel` 补 `@Published private(set) var notice: SiteNotice?`；`ThreadDetailView` 的 `.failed` 分支消费 `notice`，登录门给「登录」出口（触发已有的 `showLogin`），消除死代码 |
+| 检查器根治 | [D] 的声明名按**跨文件全局 vs 本文件局部**二分：类型名 / func / **文件顶层** let·var 才全局可见；枚举 case 名、`@Published`/`@State` 实例属性、函数参数、for/catch/闭包/泛型变量只在本文件可见。裸标识符只在「本文件 local ∪ 跨文件 global」里才判已知 |
+| 自检样例 | `lint-selftest/bad/` 新增跨文件场景（`SharedModel.swift` 的 `@Published notice` vs `Bad.swift` 裸用），自检从 3 处升到 **4 处** |
+
+### 6.4 验证
+
+- 检查器对**未修复版**精确命中 CI 的 3 处（26 / 63 / 77 行，行号与 xcodebuild 完全一致）；
+  对修复版 **0 误报**（全仓库 106 文件）。
+- 其余静态检查（swiftcheck / dups / yamlcheck）与 verify20–24 选择器镜像全部通过。
+
+### 6.5 教训
+
+「宁可漏报不可误报」不能以「全局集合」的方式实现——那会**系统性地漏掉整类 bug**。
+正确的保守方向是「**缩小跨文件可见范围**」：只把真正跨文件可见的符号（类型、全局函数、
+顶层常量）放进全局集合，其余一律按文件隔离。这样既不会误报（本文件的裸用仍认得），
+也不会漏报（跨文件的同名误用会被精确捕获）。
