@@ -264,6 +264,51 @@ final class D4D4YClientTests: XCTestCase {
         XCTAssertTrue(joggler?.isSubForum ?? false, "fid=62 应被标记为子版块")
     }
 
+    // MARK: - BoardFilterParser（主题分类 / typeid）
+
+    /// Discovery(fid=2) 登录态真实页面的 15 个主题分类。
+    /// 这条把「每个版块分类不同、不硬编码」的事实钉死：解析器只看 `div.threadtype` 里的链接。
+    func testBoardFilterParser_categories_Discovery() throws {
+        let html = decodedFixture("forumdisplay_fid2_threadtype_pc")
+        let cats = try BoardFilterParser.categories(html: html)
+        XCTAssertEqual(cats.count, 15, "Discovery(fid=2) 应有 15 个主题分类")
+
+        let nameOf: (Int) -> String? = { id in cats.first(where: { $0.id == id })?.name }
+        XCTAssertEqual(nameOf(9), "聚会")
+        XCTAssertEqual(nameOf(33), "汽车")
+        XCTAssertEqual(nameOf(38), "大杂烩")
+        XCTAssertEqual(nameOf(57), "投资")
+        XCTAssertEqual(nameOf(19), "站务", "站务是跨版块共用的分类")
+        XCTAssertTrue(cats.allSatisfy { !$0.name.isEmpty && $0.id > 0 },
+                      "全部分类都应有非空名与正 typeid")
+    }
+
+    /// Buy & Sell(fid=6) 登录态真实页面的 9 个主题分类（数码交易区）。
+    func testBoardFilterParser_categories_BuySell() throws {
+        let html = decodedFixture("forumdisplay_fid6_threadtype_pc")
+        let cats = try BoardFilterParser.categories(html: html)
+        XCTAssertEqual(cats.count, 9, "Buy&Sell(fid=6) 应有 9 个主题分类")
+
+        let nameOf: (Int) -> String? = { id in cats.first(where: { $0.id == id })?.name }
+        XCTAssertEqual(nameOf(1), "手机")
+        XCTAssertEqual(nameOf(2), "掌上电脑")
+        XCTAssertEqual(nameOf(3), "笔记本电脑")
+        XCTAssertEqual(nameOf(7), "各类配件")
+        XCTAssertEqual(nameOf(19), "站务")
+    }
+
+    // MARK: - DiscuzFormParser（附件上传密钥）
+
+    /// 发帖页 `form#imgattachform` 的 `uid` / `hash` 必须从真实页面解析出来，
+    /// 否则附件上传两步协议第一步就缺凭据（Sprint18 文档要求：失败要如实报、不伪造 aid）。
+    func testAttachmentUploadKeys_fromRealPostPage() {
+        let html = decodedFixture("post_fid14_attachform_pc")
+        let keys = DiscuzFormParser.attachmentUploadKeys(in: html)
+        XCTAssertNotNil(keys, "#imgattachform 内应能解析出 uid/hash")
+        XCTAssertEqual(keys?.uid, "19657")
+        XCTAssertEqual(keys?.hash, "ad05d71943458cb5031a0a0bd738da17")
+    }
+
     // MARK: - HTMLDecoder（P1-1 配套）
 
     func testHTMLDecoder_gbkForumPage() {
