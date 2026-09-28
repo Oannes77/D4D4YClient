@@ -235,9 +235,14 @@ struct ThreadDetailView: View {
                 .padding(.top, 60)
                 .foregroundStyle(Color.appTextSecondary(scheme))
         case .failed(let message, let detail):
-            ErrorRow(message: message, debugDetail: detail, retry: {
-                Task { await viewModel.load(page: 1) }
-            })
+            if let notice = viewModel.notice {
+                // 站点登录门：给「登录」出口，而不是只会无限「重试」。
+                threadNoticeView(notice)
+            } else {
+                ErrorRow(message: message, debugDetail: detail, retry: {
+                    Task { await viewModel.load(page: 1) }
+                })
+            }
         case .loaded(let pageData):
             VStack(spacing: 0) {
                 ForEach(Array(pageData.posts.enumerated()), id: \.element.id) { index, post in
@@ -294,6 +299,48 @@ struct ThreadDetailView: View {
             pageFooter(pageData.pageInfo)
                 .id("lastReply")
         }
+    }
+
+    /// 站点登录门提示（`viewModel.notice != nil` 时替代 `ErrorRow`）。
+    ///
+    /// 与 `HomeView.noticeView` 同一套语义：服务器返回「提示信息」页（游客访问受限帖子），
+    /// 这不是解析失败，是没登录 —— 所以显示**站点原文**，并按 `needsLogin` 决定出口：
+    /// 带登录表单 ⇒ 给「登录」；已登录但权限不够（无表单）⇒ 只给「重试」。
+    private func threadNoticeView(_ notice: SiteNotice) -> some View {
+        VStack(spacing: 12) {
+            Image(systemName: notice.needsLogin ? "lock.fill" : "exclamationmark.triangle")
+                .font(.title)
+                .foregroundStyle(notice.needsLogin ? Color.appPrimary(scheme) : Color.appTextTertiary(scheme))
+            Text(notice.needsLogin ? "该帖需要登录" : "站点提示")
+                .font(.headline)
+                .foregroundStyle(Color.appTextPrimary(scheme))
+                .accessibilityIdentifier("thread-notice-title")
+            Text(notice.message)
+                .font(.subheadline)
+                .foregroundStyle(Color.appTextSecondary(scheme))
+                .multilineTextAlignment(.center)
+                .accessibilityIdentifier("thread-notice-message")
+            if notice.needsLogin {
+                Button {
+                    showLogin = true
+                } label: {
+                    Text("登录")
+                        .font(.subheadline).fontWeight(.semibold)
+                        .padding(.horizontal, 22).padding(.vertical, 9)
+                        .background(Color.appPrimary(scheme))
+                        .foregroundStyle(Color.white)
+                        .cornerRadius(18)
+                }
+                .accessibilityIdentifier("thread-notice-login")
+            }
+            Button("重试") {
+                Task { await viewModel.load(page: 1) }
+            }
+            .font(.subheadline)
+            .foregroundStyle(Color.appPrimary(scheme))
+        }
+        .padding(.horizontal, 32)
+        .padding(.top, 70)
     }
 
     /// 详情页尾部分页条：第 X / N 页 + 上一页 / 下一页。

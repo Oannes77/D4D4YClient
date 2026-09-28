@@ -4,6 +4,13 @@ import Foundation
 final class ThreadDetailViewModel: ObservableObject {
     @Published private(set) var state: Loadable<ThreadPage> = .idle
 
+    /// 站点提示页（登录门 / 权限不足）。与 `state == .failed` 严格分开：
+    /// `Loadable.failed` 只承载「结构不认识 / 请求失败」这类**可重试**的错误；
+    /// 这里专门承载「服务器拒绝了这次访问」，界面据此给「登录」出口而不是「重试」。
+    /// 参考 `HomeViewModel.FeedState.notice(SiteNotice)`，但详情页用 `Loadable` 作 state，
+    /// 所以登录门单独用一个属性承载（`fail(_:)` 里只对 `.siteAlert` 赋值）。
+    @Published private(set) var notice: SiteNotice?
+
     let thread: ForumThread
     private let repository: ForumRepositoryProtocol
 
