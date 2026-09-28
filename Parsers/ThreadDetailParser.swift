@@ -164,6 +164,15 @@ struct ThreadDetailParser {
         // 否则同一张图会在「正文图片」与「附件」两处各出现一次。
         let attachments = container.map { AttachmentParser.parse(container: $0) } ?? []
 
+        // 「编辑」入口：站点只对**本人楼层**渲染 `a.editpost`。我们只搬运页面已有的链接，
+        // **不自行拼 URL** —— 站点不给（不是你的楼层）就是不显示编辑按钮。
+        var editPath: String?
+        if let container,
+           let editLink = (try? container.select("a.editpost").first()) ?? nil {
+            let href = ((try? editLink.attr("href")) ?? "").replacingOccurrences(of: "&amp;", with: "&")
+            if !href.isEmpty { editPath = href }
+        }
+
         let id = Self.resolvePostID(realPID: realPID,
                                     floor: floor,
                                     authorName: authorName,
@@ -177,7 +186,8 @@ struct ThreadDetailParser {
                     createdAtRaw: createdAtRaw,
                     htmlContent: htmlContent,
                     isBlocked: isBlocked,
-                    attachments: attachments)
+                    attachments: attachments,
+                    editPath: editPath)
     }
 
     // MARK: - WAP 模板（兜底）

@@ -344,6 +344,42 @@ final class D4D4YClientTests: XCTestCase {
         XCTAssertTrue(html.contains("删除线"), "「删除」二字仅作为「删除线」格式按钮存在")
     }
 
+    /// 帖子页里**只有本人楼层**才带编辑入口（站点渲染的 `a.editpost`，我们只搬运、不自行拼 URL）。
+    func testThreadDetailParser_editLinkOnlyOnOwnPost() throws {
+        let html = decodedFixture("viewthread_tid3468587_pc")
+        let page = try ThreadDetailParser.parse(html: html)
+        XCTAssertEqual(page.posts.count, 17, "1 楼 + 16 回复")
+
+        let first = try XCTUnwrap(page.posts.first)
+        XCTAssertEqual(first.floor, 1)
+        let editPath = try XCTUnwrap(first.editPath, "楼主（本人）应有编辑入口")
+        XCTAssertTrue(editPath.contains("post.php?action=edit"))
+        XCTAssertTrue(editPath.contains("pid=74756533"))
+        XCTAssertEqual(page.posts.dropFirst().filter { $0.editPath != nil }.count, 0,
+                       "其它楼不是本人发的，不应有编辑入口")
+    }
+
+    /// 编辑表单：`EditPostRepository.parseEditForm` 从真实编辑页解析出 action / formhash /
+    /// 标题 / 正文 / 提交按钮（这是「编辑自己的帖子」的数据基础）。
+    func testEditPostRepository_parseEditForm() {
+        let html = decodedFixture("post_edit_fid2_tid3468587_pc")
+        switch EditPostRepository().parseEditForm(html) {
+        case .success(let form):
+            XCTAssertTrue(form.action.contains("post.php?action=edit"))
+            XCTAssertEqual(form.formhash, "ec78b12a")
+            XCTAssertEqual(form.subject, "亚运会热度不高啊")
+            XCTAssertTrue(form.messageText.contains("好像没以前亚洲雄风热闹了"))
+            XCTAssertEqual(form.hiddenFields["fid"], "2")
+            XCTAssertEqual(form.hiddenFields["tid"], "3468587")
+            XCTAssertEqual(form.hiddenFields["pid"], "74756533")
+            XCTAssertEqual(form.messageFieldName, "message")
+            XCTAssertEqual(form.submitField?.name, "editsubmit")
+            XCTAssertEqual(form.submitField?.value, "true")
+        case .failure(let error):
+            XCTFail("编辑表单解析失败：\(error)")
+        }
+    }
+
     // MARK: - HTMLDecoder（P1-1 配套）
 
     func testHTMLDecoder_gbkForumPage() {

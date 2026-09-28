@@ -45,6 +45,8 @@ struct PostDetailRow: View {
     var onShareToBuddy: () -> Void
     /// 举报该帖（复制链接 + 私信管理员）。
     var onReport: () -> Void
+    /// 编辑本楼（仅当站点给出编辑入口 `post.editPath != nil`，即**你自己的楼层**）。
+    var onEdit: (() -> Void)? = nil
 
     @Environment(\.colorScheme) private var scheme
 
@@ -157,6 +159,18 @@ struct PostDetailRow: View {
             }
             .foregroundStyle(Color.appTextSecondary(scheme))
             .accessibilityIdentifier("post-report")
+
+            // 编辑：只有**你自己的楼层**站点才渲染 `a.editpost`（post.editPath 非空）。
+            // 站点不给入口 → 不显示按钮（绝不伪造一个点了没反应的编辑）。
+            if post.editPath != nil, let onEdit = onEdit {
+                Button {
+                    onEdit()
+                } label: {
+                    Image(systemName: "pencil")
+                }
+                .foregroundStyle(Color.appTextSecondary(scheme))
+                .accessibilityIdentifier("post-edit")
+            }
 
             Spacer()
         }

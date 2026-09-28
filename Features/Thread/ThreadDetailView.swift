@@ -44,6 +44,8 @@ struct ThreadDetailView: View {
     @State private var actionNotice: String?
     /// 站点登录门时弹出的登录页（只有「登录能解决」的情况才会用到）。
     @State private var showLogin = false
+    /// 正在编辑的楼层（有值即弹出编辑 Sheet；仅当站点给了编辑入口 `a.editpost`）。
+    @State private var editingPost: Post?
 
     private let forumID: Int?
 
@@ -159,6 +161,11 @@ struct ThreadDetailView: View {
                 } message: {
                     Text(actionNotice ?? "")
                 }
+                .sheet(item: $editingPost) { post in
+                    if let path = post.editPath {
+                        EditPostView(editPath: path) { reloadThread() }
+                    }
+                }
         } else {
             ScrollViewReader { proxy in
                 ScrollView {
@@ -209,6 +216,11 @@ struct ThreadDetailView: View {
                 }
                 // 登录门专用（正式 App 分支才有意义：演示/截图模式走的是离线夹具）。
                 .sheet(isPresented: $showLogin) { LoginView() }
+                .sheet(item: $editingPost) { post in
+                    if let path = post.editPath {
+                        EditPostView(editPath: path) { reloadThread() }
+                    }
+                }
             }
         }
     }
@@ -265,7 +277,8 @@ struct ThreadDetailView: View {
                                 }
                             },
                             onShareToBuddy: { showShareToBuddy = true },
-                            onReport: { reportThread() }
+                            onReport: { reportThread() },
+                            onEdit: { editingPost = post }
                         )
                         .id(index == 0 ? "firstPost" : "post-\(post.id)")
                         .background(Color.appBackground(scheme))
@@ -394,6 +407,13 @@ struct ThreadDetailView: View {
         } else {
             actionNotice = "链接已复制。没有可用的举报收件人，请直接粘贴发给管理员。"
         }
+    }
+
+    /// 编辑保存后按当前页重新加载（服务器回读为准，不做本地乐观替换）。
+    private func reloadThread() {
+        var page = 1
+        if case .loaded(let loaded) = viewModel.state { page = loaded.pageInfo.currentPage }
+        Task { await viewModel.load(page: page) }
     }
 
     /// 记录进入详情页的浏览历史。

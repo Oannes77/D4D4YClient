@@ -42,6 +42,12 @@ struct Post: Identifiable, Hashable {
     /// 本楼的**文件型附件**（zip / pdf / rar…；图片附件不在此列，它们走正文图片网格）。
     /// 默认空数组：老调用点无需改动。
     var attachments: [PostFileAttachment] = []
+
+    /// 本楼「编辑」入口（站点原样地址，PC 模板 `a.editpost` 的 href）。
+    /// **只有你自己的楼层**站点才会渲染它 —— 我们只搬运页面已有的链接，**不自行拼 URL**。
+    /// 拿不到就是 nil（界面据此不显示编辑按钮）。形如
+    /// `post.php?action=edit&fid=2&tid=..&pid=..&page=..`。默认 nil：老调用点无需改动。
+    var editPath: String? = nil
 }
 
 /// 一个文件型附件（PC 模板 `div.postattachlist > dl.t_attachlist`，**不带** `attachimg` class）。
