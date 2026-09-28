@@ -15,10 +15,11 @@
 | 排序与时间（热门 / 一天 / 两天 / 周 / 月 / 季） | ✅ 做 | **已完成**（Sprint 20） |
 | 非图片附件：列出文件名并可打开/分享 | ✅ 做 | **已完成**（Sprint 20） |
 | 投票帖渲染 | ❌ 不做 | — |
-| 编辑自己的帖子 | ✅ 做 | **已完成**（Sprint 24，见 B4） |
+| 编辑自己的帖子 | ✅ 做 | **已完成**（Sprint 24，见 B4）；⚠️ 编译未验，需跑 Alpha Build |
 | 删除自己的帖子 | ❌ 站点不提供 | 编辑页与帖子页均无删除控件（Sprint 23/24 实测，不伪造） |
 | 「全部板块」入口（A2） | ⏳ 未表态 | 页面已是死代码，随时可接 |
 | 夜间模式图片处理（A5） | ⏳ 未表态 | — |
+| 截图验收（Sprint 21–25） | ✅ 已验收 | build #57 26 张图，逐张复核通过；`homeSearchCompose` 同图缺陷已修（见 Sprint25-Changelog） |
 
 ---
 
@@ -95,7 +96,7 @@ A1 的「投票」筛选证明**站点确实有投票主题**（`filter=poll`）
 | B1 | **发帖的主题分类 `typeid`** | 现在发帖**完全不带分类**，而站点主题都带 `[心得技巧]` 这类前缀（A1 里 11 个分类就是它的来源）。不发分类在开启「必须选分类」的板块会被拒。分类名可从板块页链接解析（游客可见），但**最终要以发帖表单的 `typeid` select 为准** |
 | B2 | **附件上传两步协议真机验证** | `SWFUpload` 第一步要 `form#imgattachform` 的 `uid` / `hash`，而 **`post.php` 是登录门**，游客看不到。这条是全项目**最该先验**的（Sprint 18 才按参考实现重写） |
 | B3 | `my.php` / `pm.php` / `space.php` / `search.php` 结构校准 | 四个页面游客全部不可达（HTTP 200 +「您还未登录」+ 登录表单）。现有解析器是「链接 / 正则 / 启发式」驱动，理论跨模板可用，但**「结构未识别」态只能靠真实 HTML 收敛** |
-| B4 | **编辑自己的帖子** | ✅ **Sprint 24 已完成**：`ThreadDetailParser` 取本人楼层的 `a.editpost` → `EditPostRepository` 解析编辑表单（真实地址是 `post.php?action=edit&fid=..&tid=..&pid=..&page=..`）→ GBK 提交 → **回读编辑页确认**。入口只在**本人楼层**出现（站点渲染才显示，不自行拼 URL）。**删除**：该账号权限下站点**不提供**（编辑页与帖子页均无删除控件）——按红线不伪造删除按钮。 |
+| B4 | **编辑自己的帖子** | ✅ **Sprint 24 已完成**：`ThreadDetailParser` 取本人楼层的 `a.editpost` → `EditPostRepository` 解析编辑表单（真实地址是 `post.php?action=edit&fid=..&tid=..&pid=..&page=..`）→ GBK 提交 → **回读编辑页确认**。入口只在**本人楼层**出现（站点渲染才显示，不自行拼 URL）。**删除**：该账号权限下站点**不提供**（编辑页与帖子页均无删除控件）——按红线不伪造删除按钮。⚠️ **尚未编译验证**：screenshots workflow 只编 App target，需跑 **Alpha Build** 才能确认 `EditPostRepository` / `EditPostView` 与单测能编译。 |
 
 **需要的配合**：在你手机上用浏览器登录后，把 `my.php` / `pm.php` / `space.php` / `search.php` /
 发帖页（含 `#imgattachform` 与 `typeid` select）/ `editpost.php` 的页面**另存为 HTML 发给我**即可。

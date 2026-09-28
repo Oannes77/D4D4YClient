@@ -172,12 +172,6 @@ final class AppScreenshotTests: XCTestCase {
             // 等关键元素出现，确认界面真正渲染完成。
             waitForAnchor(app, target)
 
-            // 「默认收起、下拉才出现」的界面：先下拉一次再截。
-            if target.pullDown {
-                app.swipeDown()
-                Thread.sleep(forTimeInterval: 0.6)
-            }
-
             // 需要验收的元素若在首屏之外（例如长首帖下方的操作栏），先滚进可视区再拍。
             if let id = target.scrollToElement {
                 scrollIntoView(app, id)
@@ -186,6 +180,19 @@ final class AppScreenshotTests: XCTestCase {
             if let id = target.tapElement {
                 expandMenu(app, id, expecting: target.tapWaitText)
             }
+
+            // ⚠️ **下拉必须放在所有滚动/点击之后**（2026-09-29 修复）。
+            // 起因：`homeSearchCompose`（build #57）拍出来与「首页」**逐字节相同**，
+            // 两个界面名对应同一张图。根因是下拉写在 `waitForAnchor` 之后、其他滚动之前，
+            // 而这一轮的 swipeDown **手势**（16px/步的慢速拖拽）不产生「拽过顶部」的回弹，
+            // 自然不会触发 `HomeView` 的 `y > 4` 展开条件 —— 拖完还是收起态，
+            // 随后又被 settle 期间列表的惯性滚动重新钉回收起态。
+            // 修法：把下拉挪到**最后一步**，紧跟截图，中间不再插入任何会滚动列表的动作。
+            if target.pullDown {
+                pullDownToReveal(app)
+                Thread.sleep(forTimeInterval: 0.8)
+            }
+
             Thread.sleep(forTimeInterval: target.settle)
 
             let screenshot = app.screenshot()
@@ -273,5 +280,22 @@ final class AppScreenshotTests: XCTestCase {
         if !found {
             print("[Screenshots] 警告: \(target.screen) 等待元素 \(text) 超时，仍按 current 画面截图")
         }
+    }
+
+    /// 下拉回弹，展开「默认收起、下拉才出现」的搜索 + 发帖那一行。
+    ///
+    /// 为什么不用 `app.swipeDown()`：`swipeDown()` 是**慢速拖拽**（约 16px/步），
+    /// 列表会跟着手指真的往上滚而不是「拽过顶部后回弹」，
+    /// `HomeView` 里那段「`y > 4` 才展开」的偏好值逻辑压根不会被触发
+    /// （2026-09-29 实测：build #57 的 homeSearchCompose 与 home 逐字节相同）。
+    ///
+    /// 改用 `XCUICoordinate.press(forDuration:thenDragTo:)`：快速下拽 + 立即松手，
+    /// 松手后滚视图回到顶部时 `y > 4` 必然成立，从而展开那一行。
+    /// 用 `app` 自身坐标（归一化 0~1）而不是某个元素 —— 展开前那一行高度为 0，抓不到也抓不准。
+    private func pullDownToReveal(_ app: XCUIApplication) {
+        // 从屏幕上方 1/4 处快速拖到下方 3/4 处：位移足够触发 overscroll。
+        let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.25))
+        let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.75))
+        start.press(forDuration: 0.05, thenDragTo: end)
     }
 }
