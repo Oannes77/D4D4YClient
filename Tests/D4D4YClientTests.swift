@@ -309,6 +309,41 @@ final class D4D4YClientTests: XCTestCase {
         XCTAssertEqual(keys?.hash, "ad05d71943458cb5031a0a0bd738da17")
     }
 
+    // MARK: - 编辑自己的帖子（post.php?action=edit）
+
+    /// 「编辑自己的帖子」表单：真实编辑页能被通用 `DiscuzFormParser` 解析。
+    /// 编辑页与发帖页共用 `#postform`（含 message textarea），差异在 action 与额外 hidden
+    /// （`pid` / `page` / `posttime` / `iconid`），以及提交按钮叫 `editsubmit`。
+    func testDiscuzFormParser_editPostForm() throws {
+        let html = decodedFixture("post_edit_fid2_tid3468587_pc")
+        let region = try XCTUnwrap(
+            DiscuzFormParser.formRegion(in: html, requiring: #"name=["']message["']"#),
+            "应能定位到编辑帖子的 postform（含 name=message）"
+        )
+        let form = DiscuzFormParser.parse(region)
+
+        XCTAssertTrue(form.action.contains("post.php?action=edit"),
+                      "编辑表单应提交到 post.php?action=edit")
+        XCTAssertEqual(form.formhash, "ec78b12a")
+        XCTAssertEqual(form.hiddenFields["fid"], "2")
+        XCTAssertEqual(form.hiddenFields["tid"], "3468587")
+        XCTAssertEqual(form.hiddenFields["pid"], "74756533")
+        XCTAssertEqual(form.hiddenFields["page"], "1")
+        XCTAssertEqual(form.messageFieldName, "message")
+        XCTAssertEqual(form.submitField?.name, "editsubmit")
+        XCTAssertEqual(form.submitField?.value, "true")
+        XCTAssertTrue(form.isMultipart)
+    }
+
+    /// 编辑页里**没有**删除控件（「删除」只作为编辑器「删除线」格式按钮出现）——
+    /// 所以「删除自己的帖子」入口必须来自帖子浏览页，不能在本页找。
+    func testEditPage_hasNoDeleteControl() {
+        let html = decodedFixture("post_edit_fid2_tid3468587_pc")
+        XCTAssertFalse(html.contains("name=\"delete\""), "编辑页无 name=delete 字段")
+        XCTAssertFalse(html.contains("删除本帖"), "编辑页无「删除本帖」按钮")
+        XCTAssertTrue(html.contains("删除线"), "「删除」二字仅作为「删除线」格式按钮存在")
+    }
+
     // MARK: - HTMLDecoder（P1-1 配套）
 
     func testHTMLDecoder_gbkForumPage() {
